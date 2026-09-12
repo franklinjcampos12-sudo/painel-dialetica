@@ -22,7 +22,9 @@ manifest.json   torna instalável como aplicativo
 icone.svg       ícone da tela inicial
 ```
 
-`index.html` carrega React 18 UMD, ReactDOM e Babel standalone do cdnjs, e roda o JSX direto no navegador dentro de `<script type="text/babel">`.
+`index.html` carrega React 18 UMD e ReactDOM da pasta `vendor/` (baixados do cdnjs, sem CDN em produção — funciona offline). O JSX foi **pré-compilado uma vez** (setembro/2026) para JS puro (`React.createElement(...)`) dentro de um `<script>` comum, para não depender de Babel no navegador. O código continua legível e editável normalmente — só trocou a sintaxe de tag por chamada de função.
+
+`build.js` foi a ferramenta usada nessa conversão única (procura `<script type="text/babel">`, que não existe mais no arquivo — não precisa rodar de novo). Se quiser escrever um trecho novo em JSX por conveniência, `vendor/babel.min.js` continua na pasta (não é carregado pelo navegador) e pode ser usado via Node para transformar esse trecho antes de colar no lugar certo.
 
 **Não introduza dependências novas, bundler, TypeScript ou múltiplos arquivos de código sem pedir autorização.**
 
@@ -99,9 +101,9 @@ Funciona: custos fixos e variáveis com sugestões, contratos com agenda de visi
 
 ## Pendências conhecidas
 
-1. **Hospedar** — é a tarefa imediata, ver PRIMEIRO-PROMPT.md
-2. Service worker para funcionar offline de verdade; hoje a primeira carga precisa de internet por causa do CDN
-3. Pré-compilar o JSX para dispensar o Babel no navegador e acelerar a abertura
+1. ~~Hospedar~~ — feito: GitHub Pages, publica sozinho a cada `git push` (repo `painel-dialetica`)
+2. Service worker para funcionar offline de verdade (falta esse passo — React/ReactDOM já são locais, mas sem cache o navegador ainda busca os arquivos pela rede na abertura)
+3. ~~Pré-compilar o JSX~~ — feito, ver nota acima sobre `build.js`
 4. Gerar ícone PNG 192 e 512 além do SVG, para compatibilidade mais ampla
 5. Backup automático periódico, já que hoje depende de ele lembrar
 
