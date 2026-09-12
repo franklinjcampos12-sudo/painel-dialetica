@@ -1,0 +1,1768 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dialética</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icone.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icone.svg">
+<meta name="theme-color" content="#22252A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dialética">
+<style>
+  html, body { margin:0; padding:0; background:#E7E7E1; }
+  #carregando { font-family:system-ui,sans-serif; color:#6D7278; padding:28px 18px; font-size:15px; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+</head>
+<body>
+<div id="raiz"><div id="carregando">Abrindo o painel…</div></div>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useRef } = React;
+
+/* ================================================================
+   Painel de Comando — Dialética
+   Metáfora: quadro de distribuição. Cada fase é um disjuntor que
+   só fecha quando as condições dela são atendidas.
+   ================================================================ */
+
+const STORE_KEY = "dialetica:painel";
+
+/* Armazenamento adaptativo: usa a nuvem do Claude quando publicado,
+   e o próprio aparelho quando aberto como arquivo solto no celular. */
+const loja = {
+  async get(k) {
+    try { return window.localStorage.getItem(k); } catch (e) { return null; }
+  },
+  async set(k, v) {
+    window.localStorage.setItem(k, v);
+    return "aparelho";
+  },
+};
+
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600&family=Barlow:wght@400;500;600&display=swap');
+
+.dl {
+  --base:#E7E7E1; --paper:#F7F7F2; --carbon:#22252A; --muted:#6D7278;
+  --line:#CBCBC3; --neutro:#3C7FB1; --terra:#4F8B3B; --fase:#B4292E; --cobre:#A9702B;
+  font-family:'Barlow', -apple-system, system-ui, sans-serif;
+  color:var(--carbon); background:var(--base);
+  max-width:620px; margin:0 auto; padding:14px 14px 64px;
+  font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
+}
+.dl *, .dl *::before, .dl *::after { box-sizing:border-box; }
+.dl h1,.dl h2,.dl h3,.dl h4 { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; margin:0; letter-spacing:.01em; }
+.dl h1 { font-size:27px; line-height:1.1; }
+.dl h2 { font-size:21px; }
+.dl h3 { font-size:17px; }
+.dl h4 { font-size:15px; color:var(--muted); font-weight:500; }
+.dl p { margin:0; }
+.dl button { font-family:inherit; cursor:pointer; }
+
+.dl-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.dl-sub { color:var(--muted); font-size:13px; }
+
+.dl-tabs { display:flex; gap:4px; overflow-x:auto; margin:14px -14px 16px; padding:0 14px 4px; scrollbar-width:none; }
+.dl-tabs::-webkit-scrollbar { display:none; }
+.dl-tab { flex:0 0 auto; border:1px solid var(--line); background:transparent; color:var(--muted);
+  padding:7px 13px; font-size:14px; border-radius:2px; white-space:nowrap; }
+.dl-tab-on { background:var(--carbon); border-color:var(--carbon); color:var(--paper); }
+.dl-sub2 { display:flex; gap:5px; margin-bottom:14px; flex-wrap:wrap; }
+.dl-sub2 button { border:1px solid var(--line); background:transparent; color:var(--muted); padding:5px 11px; font-size:13.5px; border-radius:2px; }
+.dl-sub2 .on { border-color:var(--carbon); color:var(--carbon); background:var(--paper); }
+
+.dl-meter { background:var(--paper); border:1px solid var(--line); border-radius:2px; padding:16px; }
+.dl-meter-top { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px; gap:12px; }
+.dl-big { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-size:46px; line-height:.9; font-weight:600; font-variant-numeric:tabular-nums; }
+.dl-bus { position:relative; height:22px; background:#DDDDD6; border:1px solid var(--line); overflow:hidden; }
+.dl-bus-fill { position:absolute; inset:0 auto 0 0; transition:width .45s ease; }
+.dl-legend { display:flex; justify-content:space-between; margin-top:7px; font-size:12.5px; color:var(--muted); }
+
+.dl-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+.dl-stat { background:var(--paper); border:1px solid var(--line); border-radius:2px; padding:11px 12px; }
+.dl-stat-label { font-size:12.5px; color:var(--muted); }
+.dl-stat-val { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-size:24px; font-weight:600; font-variant-numeric:tabular-nums; line-height:1.2; }
+
+.dl-bar { position:relative; margin-top:18px; padding-left:26px; }
+.dl-spine { position:absolute; left:9px; top:12px; bottom:12px; width:3px; background:var(--line); }
+.dl-phase { position:relative; margin-bottom:8px; }
+.dl-brk { position:absolute; left:-26px; top:12px; width:21px; height:21px; border:2px solid var(--line);
+  background:var(--paper); border-radius:2px; display:flex; align-items:center; justify-content:center; }
+.dl-brk span { display:block; width:9px; height:3px; background:var(--line); transition:transform .3s; }
+.dl-brk-on { border-color:var(--terra); } .dl-brk-on span { background:var(--terra); transform:rotate(0deg); }
+.dl-brk-live { border-color:var(--cobre); } .dl-brk-live span { background:var(--cobre); transform:rotate(-32deg); }
+.dl-brk-off span { transform:rotate(-58deg); }
+.dl-phase-btn { width:100%; text-align:left; background:var(--paper); border:1px solid var(--line);
+  border-radius:2px; padding:11px 12px; display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.dl-phase-live { border-color:var(--cobre); border-left-width:3px; }
+.dl-phase-name { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-size:17px; font-weight:600; }
+.dl-cond { border:1px solid var(--line); border-top:none; background:#FBFBF8; padding:10px 12px; }
+.dl-cond-row { display:flex; gap:9px; align-items:flex-start; padding:5px 0; font-size:14px; }
+.dl-dot { flex:0 0 auto; width:9px; height:9px; border-radius:50%; margin-top:6px; background:var(--line); }
+.dl-dot-ok { background:var(--terra); }
+
+.dl-alert { border:1px solid var(--fase); border-left-width:3px; background:#FBF1F1; padding:11px 12px; border-radius:2px; margin-top:14px; font-size:14px; }
+.dl-alert h3 { color:var(--fase); margin-bottom:3px; }
+.dl-info { border:1px solid var(--line); border-left:3px solid var(--neutro); background:var(--paper); padding:11px 12px; border-radius:2px; margin-bottom:12px; font-size:14px; }
+
+.dl-sec { margin-bottom:22px; }
+.dl-row { background:var(--paper); border:1px solid var(--line); border-radius:2px; padding:10px 12px; margin-bottom:7px;
+  display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.dl-row-btn { width:100%; text-align:left; }
+.dl-row-main { min-width:0; flex:1; }
+.dl-row-t { font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dl-row-s { font-size:12.5px; color:var(--muted); }
+.dl-row-v { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-size:19px; font-weight:600; font-variant-numeric:tabular-nums; flex:0 0 auto; }
+.dl-x { border:none; background:none; color:var(--muted); font-size:19px; line-height:1; padding:0 3px; flex:0 0 auto; }
+.dl-form { background:var(--paper); border:1px dashed var(--line); border-radius:2px; padding:12px; margin-bottom:10px; }
+.dl-f { display:flex; gap:7px; margin-bottom:7px; }
+.dl-f > * { min-width:0; }
+.dl-in { width:100%; border:1px solid var(--line); background:#fff; border-radius:2px; padding:9px 10px;
+  font-family:inherit; font-size:15px; color:var(--carbon); }
+.dl-in:focus { outline:2px solid var(--neutro); outline-offset:-1px; }
+.dl-ta { min-height:62px; resize:vertical; }
+.dl-btn { border:1px solid var(--carbon); background:var(--carbon); color:var(--paper); border-radius:2px; padding:9px 15px; font-size:14.5px; }
+.dl-btn-2 { border:1px solid var(--line); background:transparent; color:var(--carbon); border-radius:2px; padding:8px 13px; font-size:14px; }
+.dl-empty { color:var(--muted); font-size:14px; padding:12px; border:1px dashed var(--line); border-radius:2px; }
+.dl-note { font-size:13px; color:var(--muted); margin-bottom:9px; }
+.dl-chk { display:flex; gap:9px; align-items:flex-start; background:var(--paper); border:1px solid var(--line);
+  border-radius:2px; padding:10px 12px; margin-bottom:7px; font-size:14px; }
+.dl-chk input { margin-top:4px; flex:0 0 auto; width:17px; height:17px; accent-color:var(--terra); }
+.dl-total { display:flex; justify-content:space-between; align-items:baseline; border-top:2px solid var(--carbon); padding-top:8px; margin-top:4px; }
+.dl-total b { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-size:23px; font-variant-numeric:tabular-nums; }
+.dl-pill { display:inline-block; font-size:12px; padding:2px 7px; border-radius:2px; border:1px solid var(--line); color:var(--muted); white-space:nowrap; }
+.dl-pill-live { border-color:var(--cobre); color:var(--cobre); }
+.dl-pill-ok { border-color:var(--terra); color:var(--terra); }
+.dl-pill-bad { border-color:var(--fase); color:var(--fase); }
+
+.dl-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+.dl-chip { border:1px solid var(--line); background:var(--paper); color:var(--carbon); border-radius:2px; padding:6px 10px; font-size:13.5px; }
+.dl-chip-used { color:var(--muted); border-style:dashed; }
+
+.dl-back { border:none; background:none; color:var(--muted); font-size:14px; padding:0 0 8px; }
+.dl-scroll { overflow-x:auto; margin:0 -14px; padding:0 14px; }
+.dl-table { border-collapse:collapse; width:100%; min-width:520px; font-size:13.5px; background:var(--paper); }
+.dl-table th, .dl-table td { border:1px solid var(--line); padding:6px 8px; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.dl-table th:first-child, .dl-table td:first-child { text-align:left; position:sticky; left:0; background:var(--paper); }
+.dl-table thead th { background:#EDEDE6; font-weight:600; }
+.dl-table .g td { background:#EDEDE6; font-weight:600; }
+.dl-table .r td { border-top:2px solid var(--carbon); font-weight:600; }
+
+.dl-prog { height:8px; background:#DDDDD6; border:1px solid var(--line); margin-top:7px; overflow:hidden; }
+.dl-prog i { display:block; height:100%; background:var(--terra); }
+
+.dl-save { position:fixed; bottom:12px; left:50%; transform:translateX(-50%); font-size:12.5px; color:var(--muted);
+  background:var(--paper); border:1px solid var(--line); padding:4px 11px; border-radius:2px; }
+`;
+
+/* ------------------------------ utils ------------------------------ */
+const brl = (n) => (isFinite(n) ? n : 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+const num = (v) => { const n = parseFloat(String(v ?? "").replace(/\./g, "").replace(",", ".")); return isFinite(n) ? n : 0; };
+const uid = () => Math.random().toString(36).slice(2, 9);
+const hoje = () => new Date().toISOString().slice(0, 10);
+const br = (d) => (d ? d.split("-").reverse().join("/") : "—");
+const MES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+const mesLabel = (ym) => MES[+ym.slice(5, 7) - 1] + "/" + ym.slice(2, 4);
+const addMes = (ym, k) => { const [a, m] = ym.split("-").map(Number); const dt = new Date(a, m - 1 + k, 1); return dt.toISOString().slice(0, 7); };
+const ymHoje = () => hoje().slice(0, 7);
+const dias = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
+
+const FORMAS = ["Pix", "Dinheiro", "Transferência", "Boleto", "Cartão", "Cheque"];
+
+const SUG_FIXO = ["Pró-labore", "Contador", "Conta de celular", "Internet", "Combustível", "Manutenção do veículo",
+  "Seguro do veículo", "IPVA e licenciamento", "Aluguel", "Energia do escritório", "Sistema / ERP",
+  "Ferramentas e equipamentos", "EPI", "Anuidade CREA", "Encarregado", "Administrativo", "Impostos fixos", "Marketing"];
+const SUG_VAR = ["Material elétrico", "Empreitada de mão de obra", "Diária de ajudante", "Frete e entrega",
+  "Locação de equipamento", "Combustível de obra", "Alimentação em obra", "Hospedagem", "ART por obra",
+  "Comissão de venda", "ISS sobre serviço", "Descarte de resíduo"];
+
+const VAZIO = {
+  custos: [], contratos: [], obras: [], lancamentos: [], ativos: [], clientes: [], metas: [],
+  saldoInicial: "", reserva: "", giro: "", fundoAtivos: "",
+  potes: { reserva: 50, giro: 30, ativos: 20 },
+  marcos: { margens: false, ciclo: "", operacao60: false, lucro6: false, primeiroAtivo6: false },
+  custoVida: [], rendas: [], patrimonio: [], fechamentos: {},
+  ultimoBackup: "",
+  versao: 2,
+};
+
+/* Converte dados antigos (gastos e movimentos soltos) para lançamentos únicos,
+   para que obra, ativo e caixa passem a olhar para a mesma fonte de dinheiro. */
+function migrar(s) {
+  if (s.versao === 2) return s;
+  const extras = [];
+  const obras = (s.obras || []).map((o) => {
+    (o.gastos || []).forEach((g) => extras.push({
+      id: uid(), data: g.data, desc: g.descricao || g.cat, valor: g.valor, tipo: "s", forma: "Pix",
+      status: "pago", categoria: g.cat === "maodeobra" ? "maodeobra" : g.cat === "material" ? "material" : "outra", obraId: o.id }));
+    return { ...o, gastos: [] };
+  });
+  const ativos = (s.ativos || []).map((a) => {
+    (a.aportes || []).forEach((x) => extras.push({
+      id: uid(), data: x.data, desc: (x.desc || "aporte") + " · " + a.nome, valor: x.valor, tipo: "s",
+      forma: "Pix", status: "pago", categoria: "ativo", ativoId: a.id, aporte: true }));
+    (a.movimentos || []).forEach((x) => extras.push({
+      id: uid(), data: x.data, desc: x.desc || a.nome, valor: x.valor, tipo: x.tipo,
+      forma: "Pix", status: "pago", categoria: "ativo", ativoId: a.id }));
+    return { ...a, aportes: [], movimentos: [] };
+  });
+  return { ...s, obras, ativos, lancamentos: [...extras, ...(s.lancamentos || [])], versao: 2 };
+}
+
+/* ================================ APP ================================ */
+function PainelDialetica() {
+  const [d, setD] = useState(VAZIO);
+  const [aba, setAba] = useState("painel");
+  const [det, setDet] = useState(null); // {tipo,id}
+  const [carregando, setCarregando] = useState(true);
+  const [status, setStatus] = useState("");
+  const primeira = useRef(true);
+
+  useEffect(() => {
+    (async () => {
+      try { const r = await loja.get(STORE_KEY); if (r) setD({ ...VAZIO, ...migrar(JSON.parse(r)) }); }
+      catch (e) { /* primeira abertura */ }
+      setCarregando(false);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (carregando) return;
+    if (primeira.current) { primeira.current = false; return; }
+    const t = setTimeout(async () => {
+      try {
+        const onde = await loja.set(STORE_KEY, JSON.stringify(d));
+        setStatus("salvo no " + onde + " · " + new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
+      } catch (e) { setStatus("não consegui salvar"); }
+    }, 700);
+    return () => clearTimeout(t);
+  }, [d, carregando]);
+
+  const up = (patch) => setD((p) => ({ ...p, ...patch }));
+  const upItem = (col, id, patch) => up({ [col]: d[col].map((x) => (x.id === id ? { ...x, ...patch } : x)) });
+
+  /* ---------------------------- cálculos ---------------------------- */
+  const c = useMemo(() => {
+    const fixos = d.custos.filter((x) => x.tipo !== "variavel");
+    const variaveis = d.custos.filter((x) => x.tipo === "variavel");
+    const custoFixo = fixos.reduce((s, x) => s + num(x.valor), 0);
+    const varMensal = variaveis.filter((x) => x.unidade === "mes").reduce((s, x) => s + num(x.valor), 0);
+    const recorrente = d.contratos.filter((x) => x.ativo !== false).reduce((s, x) => s + num(x.valor), 0);
+    const cobertura = custoFixo > 0 ? (recorrente / custoFixo) * 100 : 0;
+
+    const pagos = d.lancamentos.filter((l) => l.status !== "previsto");
+    const entradas = pagos.filter((l) => l.tipo === "e").reduce((s, l) => s + num(l.valor), 0);
+    const saidas = pagos.filter((l) => l.tipo === "s").reduce((s, l) => s + num(l.valor), 0);
+    const caixa = num(d.saldoInicial) + entradas - saidas;
+
+    const prev = d.lancamentos.filter((l) => l.status === "previsto");
+    const aReceber = prev.filter((l) => l.tipo === "e").reduce((s, l) => s + num(l.valor), 0);
+    const aPagar = prev.filter((l) => l.tipo === "s").reduce((s, l) => s + num(l.valor), 0);
+    const atrasados = prev.filter((l) => l.tipo === "e" && l.vencimento && l.vencimento < hoje());
+
+    const reserva = num(d.reserva);
+    const reservaMeses = custoFixo > 0 ? reserva / custoFixo : 0;
+
+    const obraCalc = {};
+    d.obras.forEach((o) => {
+      const lanc = d.lancamentos.filter((l) => l.obraId === o.id);
+      const med = (o.medicoes || []).reduce((s, m) => s + num(m.valor), 0);
+      const receb = lanc.filter((l) => l.tipo === "e" && l.status !== "previsto").reduce((s, l) => s + num(l.valor), 0);
+      const gasto = lanc.filter((l) => l.tipo === "s").reduce((s, l) => s + num(l.valor), 0);
+      const etapas = o.etapas || [];
+      obraCalc[o.id] = {
+        med, receb, gasto, lanc,
+        margem: num(o.contrato) - (gasto || num(o.custoPrevisto)),
+        aReceber: Math.max(0, med - receb),
+        naoMedido: Math.max(0, num(o.contrato) - med),
+        progresso: etapas.length ? (etapas.filter((e) => e.ok).length / etapas.length) * 100 : 0,
+      };
+    });
+    const margemObras = d.obras.reduce((s, o) => s + obraCalc[o.id].margem, 0);
+    const obraAReceber = d.obras.filter((o) => o.status !== "fechada").reduce((s, o) => s + obraCalc[o.id].aReceber, 0);
+
+    const ativoCalc = {};
+    d.ativos.forEach((a) => {
+      const lanc = d.lancamentos.filter((l) => l.ativoId === a.id);
+      const ap = lanc.filter((l) => l.aporte).reduce((s, x) => s + num(x.valor), 0);
+      const rec = lanc.filter((l) => l.tipo === "e").reduce((s, x) => s + num(x.valor), 0);
+      const des = lanc.filter((l) => l.tipo === "s" && !l.aporte).reduce((s, x) => s + num(x.valor), 0);
+      const meses = new Set(lanc.filter((l) => !l.aporte).map((x) => (x.data || hoje()).slice(0, 7))).size || 0;
+      const liquidoMes = meses ? (rec - des) / meses : num(a.retorno);
+      ativoCalc[a.id] = { ap, rec, des, liquidoMes, lanc, payback: liquidoMes > 0 ? ap / liquidoMes : 0 };
+    });
+
+    const emExecucao = d.ativos.filter((a) => a.status === "execucao").length;
+    const operando = d.ativos.filter((a) => a.status === "operando");
+    const rendaAtivos = operando.reduce((s, a) => s + Math.max(0, ativoCalc[a.id].liquidoMes), 0);
+
+    const custoVida = d.custoVida.reduce((s2, x) => s2 + num(x.valor), 0);
+    const outrasRendas = d.rendas.reduce((s2, x) => s2 + num(x.valor), 0);
+    const rendaPassiva = rendaAtivos + outrasRendas;
+    const independencia = custoVida > 0 ? (rendaPassiva / custoVida) * 100 : 0;
+    const patrimonio = d.patrimonio.reduce((s2, x) => s2 + num(x.valor), 0) + reserva + num(d.fundoAtivos);
+
+    return { custoVida, outrasRendas, rendaPassiva, independencia, patrimonio,
+      custoFixo, varMensal, recorrente, cobertura, caixa, aReceber, aPagar, atrasados, reserva, reservaMeses,
+      obraCalc, margemObras, obraAReceber, ativoCalc, emExecucao, operando: operando.length, rendaAtivos };
+  }, [d]);
+
+  const valorMeta = (m) => {
+    if (m.fonte === "recorrente") return c.recorrente;
+    if (m.fonte === "reserva") return c.reserva;
+    if (m.fonte === "caixa") return c.caixa;
+    if (m.fonte === "ativos") return c.rendaAtivos;
+    return num(m.atual);
+  };
+  const metasAbertas = d.metas.filter((m) => valorMeta(m) < num(m.alvo));
+  const proximaMeta = metasAbertas.slice().sort((a, b) => (num(a.alvo) - valorMeta(a)) - (num(b.alvo) - valorMeta(b)))[0];
+
+  /* ------------------------------ fases ------------------------------ */
+  const fases = useMemo(() => {
+    const f = [
+      { n: "Fase 0", nome: "Saber os números", cond: [
+        { t: "Custo fixo mensal levantado item a item", ok: c.custoFixo > 0 },
+        { t: "Custos variáveis mapeados", ok: d.custos.some((x) => x.tipo === "variavel") },
+        { t: "Margem apurada por tipo de obra", ok: d.marcos.margens },
+        { t: "Ciclo de caixa medido em dias", ok: num(d.marcos.ciclo) > 0 } ] },
+      { n: "Fase 1", nome: "Previsibilidade", cond: [
+        { t: "Contratos de manutenção cobrindo 100% do custo fixo", ok: c.cobertura >= 100 && c.custoFixo > 0 } ] },
+      { n: "Fase 2", nome: "Sair do operacional", cond: [
+        { t: "Reserva de 3 meses de custo fixo", ok: c.reservaMeses >= 3 },
+        { t: "Encarregado no lugar antes de qualquer ajudante", ok: d.custos.some((x) => /encarreg/i.test(x.nome || "")) } ] },
+      { n: "Fase 3", nome: "Subir o ticket", cond: [
+        { t: "Operação rodou 60 dias seguidos sem você no canteiro", ok: d.marcos.operacao60 } ] },
+      { n: "Fase 4", nome: "Primeiro ativo", cond: [
+        { t: "Reserva de 6 meses de custo fixo", ok: c.reservaMeses >= 6 },
+        { t: "Lucro consistente por 6 meses seguidos", ok: d.marcos.lucro6 } ] },
+      { n: "Fase 5", nome: "Segundo ativo", cond: [
+        { t: "Primeiro ativo pagando as próprias contas há 6 meses", ok: d.marcos.primeiroAtivo6 } ] },
+    ];
+    let ant = true;
+    return f.map((x) => {
+      const propria = x.cond.every((k) => k.ok);
+      const fechada = ant && propria, atual = ant && !propria;
+      ant = fechada;
+      return { ...x, fechada, atual };
+    });
+  }, [d, c]);
+  const faseAtual = fases.find((f) => f.atual) || fases[fases.length - 1];
+
+  const travas = [];
+  if (c.emExecucao > 1) travas.push("Você tem " + c.emExecucao + " ativos em execução ao mesmo tempo. A regra é um por vez.");
+  if (num(d.fundoAtivos) > 0 && c.reservaMeses < 6) travas.push("Existe dinheiro no fundo de ativos com a reserva abaixo de 6 meses. Enquanto o pote 1 não enche, o pote 3 recebe zero.");
+  if (c.custoFixo > 0 && c.cobertura < 100 && d.custos.some((x) => /encarreg|ajudant|eletricist|salári|folha|administrativ/i.test(x.nome || "")))
+    travas.push("Já existe folha no custo fixo sem o recorrente cobrir 100% dele. É o erro que mais quebra empresa de obra.");
+  if (c.atrasados.length) travas.push(c.atrasados.length + " cobrança(s) vencida(s) sem receber, somando " + brl(c.atrasados.reduce((s, l) => s + num(l.valor), 0)) + ". Vá na aba Caixa.");
+
+  if (carregando) return <div style={{ padding: 24, fontFamily: "system-ui", color: "#6D7278" }}>Abrindo o painel…</div>;
+
+  const abas = [["painel", "Painel"], ["custos", "Custos"], ["contratos", "Recorrente"], ["obras", "Obras"],
+    ["caixa", "Caixa"], ["metas", "Metas"], ["ativos", "Ativos"], ["vida", "Vida"], ["clientes", "Clientes"], ["backup", "Backup"]];
+
+  const irPara = (tipo, id) => setDet({ tipo, id });
+  const voltar = () => setDet(null);
+
+  let conteudo;
+  if (det?.tipo === "obra") conteudo = <ObraDetalhe d={d} up={up} upItem={upItem} c={c} id={det.id} voltar={voltar} />;
+  else if (det?.tipo === "contrato") conteudo = <ContratoDetalhe d={d} upItem={upItem} id={det.id} voltar={voltar} />;
+  else if (det?.tipo === "ativo") conteudo = <AtivoDetalhe d={d} up={up} upItem={upItem} c={c} id={det.id} voltar={voltar} />;
+  else if (aba === "painel") conteudo = <Painel d={d} c={c} fases={fases} travas={travas} proximaMeta={proximaMeta} valorMeta={valorMeta} />;
+  else if (aba === "custos") conteudo = <Custos d={d} up={up} c={c} />;
+  else if (aba === "contratos") conteudo = <Contratos d={d} up={up} c={c} abrir={(id) => irPara("contrato", id)} />;
+  else if (aba === "obras") conteudo = <Obras d={d} up={up} c={c} abrir={(id) => irPara("obra", id)} />;
+  else if (aba === "caixa") conteudo = <Caixa d={d} up={up} c={c} />;
+  else if (aba === "metas") conteudo = <Metas d={d} up={up} c={c} valorMeta={valorMeta} />;
+  else if (aba === "ativos") conteudo = <Ativos d={d} up={up} c={c} abrir={(id) => irPara("ativo", id)} />;
+  else if (aba === "vida") conteudo = <Vida d={d} up={up} c={c} />;
+  else if (aba === "backup") conteudo = <Backup d={d} up={up} />;
+  else conteudo = <Clientes d={d} up={up} />;
+
+  return (
+    <div className="dl">
+      <style>{CSS}</style>
+      <div className="dl-head">
+        <h1>Dialética</h1>
+        <span className="dl-sub">{faseAtual.n} · {faseAtual.nome}</span>
+      </div>
+      <div className="dl-tabs">
+        {abas.map(([k, r]) => (
+          <button key={k} className={"dl-tab" + (aba === k && !det ? " dl-tab-on" : "")} onClick={() => { setAba(k); setDet(null); }}>{r}</button>
+        ))}
+      </div>
+      {conteudo}
+      {status && <div className="dl-save">{status}</div>}
+    </div>
+  );
+}
+
+/* ============================== PAINEL ============================== */
+function Painel({ d, c, fases, travas, proximaMeta, valorMeta }) {
+  const [aberta, setAberta] = useState(null);
+  const cor = c.cobertura >= 100 ? "var(--terra)" : c.cobertura >= 60 ? "var(--cobre)" : "var(--fase)";
+  return (
+    <>
+      <div className="dl-meter">
+        <div className="dl-meter-top">
+          <div>
+            <p className="dl-stat-label">Do custo fixo coberto por contrato recorrente</p>
+            <div className="dl-big" style={{ color: cor }}>{c.custoFixo > 0 ? Math.round(c.cobertura) : 0}%</div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <p className="dl-stat-label">falta cobrir</p>
+            <div className="dl-stat-val">{brl(Math.max(0, c.custoFixo - c.recorrente))}</div>
+          </div>
+        </div>
+        <div className="dl-bus"><div className="dl-bus-fill" style={{ width: Math.min(100, c.cobertura) + "%", background: cor }} /></div>
+        <div className="dl-legend"><span>recorrente {brl(c.recorrente)}</span><span>custo fixo {brl(c.custoFixo)}</span></div>
+      </div>
+
+      {c.custoVida > 0 && (
+        <div className="dl-meter" style={{ marginTop: 10 }}>
+          <div className="dl-meter-top">
+            <div>
+              <p className="dl-stat-label">Da sua vida paga por renda que não depende do seu trabalho</p>
+              <div className="dl-big" style={{ color: c.independencia >= 100 ? "var(--terra)" : c.independencia >= 40 ? "var(--cobre)" : "var(--neutro)" }}>{Math.round(c.independencia)}%</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <p className="dl-stat-label">patrimônio</p>
+              <div className="dl-stat-val">{brl(c.patrimonio)}</div>
+            </div>
+          </div>
+          <div className="dl-bus"><div className="dl-bus-fill" style={{ width: Math.min(100, c.independencia) + "%", background: c.independencia >= 100 ? "var(--terra)" : "var(--neutro)" }} /></div>
+          <div className="dl-legend"><span>renda passiva {brl(c.rendaPassiva)}</span><span>custo de vida {brl(c.custoVida)}</span></div>
+        </div>
+      )}
+
+      {proximaMeta && (
+        <div className="dl-info" style={{ marginTop: 10, marginBottom: 0 }}>
+          <h3>Próximo objetivo: {proximaMeta.nome}</h3>
+          <p className="dl-row-s">Faltam {brl(num(proximaMeta.alvo) - valorMeta(proximaMeta))} de {brl(num(proximaMeta.alvo))}{proximaMeta.prazo ? " · até " + br(proximaMeta.prazo) : ""}</p>
+          <div className="dl-prog"><i style={{ width: Math.min(100, (valorMeta(proximaMeta) / (num(proximaMeta.alvo) || 1)) * 100) + "%" }} /></div>
+        </div>
+      )}
+
+      <div className="dl-grid">
+        <div className="dl-stat"><p className="dl-stat-label">Caixa hoje</p><div className="dl-stat-val">{brl(c.caixa)}</div></div>
+        <div className="dl-stat">
+          <p className="dl-stat-label">Reserva</p>
+          <div className="dl-stat-val" style={{ color: c.reservaMeses >= 6 ? "var(--terra)" : c.reservaMeses >= 3 ? "var(--cobre)" : "var(--fase)" }}>{c.reservaMeses.toFixed(1)} meses</div>
+        </div>
+        <div className="dl-stat"><p className="dl-stat-label">A receber</p><div className="dl-stat-val">{brl(c.aReceber)}</div></div>
+        <div className="dl-stat"><p className="dl-stat-label">A pagar</p><div className="dl-stat-val">{brl(c.aPagar)}</div></div>
+        <div className="dl-stat"><p className="dl-stat-label">Margem das obras</p><div className="dl-stat-val">{brl(c.margemObras)}</div></div>
+        <div className="dl-stat"><p className="dl-stat-label">Renda de ativos</p><div className="dl-stat-val">{brl(c.rendaAtivos)}</div></div>
+      </div>
+
+      {travas.length > 0 && (
+        <div className="dl-alert">
+          <h3>{travas.length === 1 ? "Trava acionada" : "Travas acionadas"}</h3>
+          {travas.map((t, i) => <p key={i} style={{ marginTop: i ? 7 : 0 }}>{t}</p>)}
+        </div>
+      )}
+
+      {(d.obras.length + d.contratos.length + d.lancamentos.length + d.custos.length) > 0 &&
+        (!d.ultimoBackup || dias(d.ultimoBackup, hoje()) > 30) && (
+        <div className="dl-info" style={{ marginTop: 14, marginBottom: 0 }}>
+          <h3>Backup</h3>
+          <p>{d.ultimoBackup ? "Seu último backup foi em " + br(d.ultimoBackup) + "." : "Você ainda não fez nenhum backup."} Vá na aba Backup e guarde uma cópia.</p>
+        </div>
+      )}
+
+      <div className="dl-bar">
+        <div className="dl-spine" />
+        {fases.map((f, i) => (
+          <div className="dl-phase" key={i}>
+            <div className={"dl-brk " + (f.fechada ? "dl-brk-on" : f.atual ? "dl-brk-live" : "dl-brk-off")}><span /></div>
+            <button className={"dl-phase-btn" + (f.atual ? " dl-phase-live" : "")} onClick={() => setAberta(aberta === i ? null : i)}>
+              <span className="dl-row-main">
+                <span className="dl-phase-name">{f.nome}</span>
+                <span className="dl-row-s" style={{ display: "block" }}>{f.n}</span>
+              </span>
+              <span className="dl-row-s">{f.fechada ? "fechada" : f.atual ? "em curso" : "aguardando"}</span>
+            </button>
+            {aberta === i && (
+              <div className="dl-cond">
+                {f.cond.map((k, j) => (
+                  <div className="dl-cond-row" key={j}><span className={"dl-dot" + (k.ok ? " dl-dot-ok" : "")} /><span>{k.t}</span></div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/* ============================== CUSTOS ============================== */
+function Custos({ d, up, c }) {
+  const [tipo, setTipo] = useState("fixo");
+  const [nome, setNome] = useState("");
+  const [valor, setValor] = useState("");
+  const [unidade, setUnidade] = useState("mes");
+
+  const add = (n) => {
+    const t = (n ?? nome).trim();
+    if (!t) return;
+    up({ custos: [...d.custos, { id: uid(), nome: t, valor: n ? "" : valor, tipo, unidade: tipo === "variavel" ? unidade : "mes" }] });
+    if (!n) { setNome(""); setValor(""); }
+  };
+  const edit = (id, k, v) => up({ custos: d.custos.map((x) => (x.id === id ? { ...x, [k]: v } : x)) });
+  const usados = d.custos.map((x) => (x.nome || "").toLowerCase());
+  const sug = tipo === "fixo" ? SUG_FIXO : SUG_VAR;
+  const lista = d.custos.filter((x) => (tipo === "fixo" ? x.tipo !== "variavel" : x.tipo === "variavel"));
+
+  return (
+    <div className="dl-sec">
+      <h2>Custos</h2>
+      <div className="dl-sub2" style={{ marginTop: 8 }}>
+        <button className={tipo === "fixo" ? "on" : ""} onClick={() => setTipo("fixo")}>Fixos · {brl(c.custoFixo)}</button>
+        <button className={tipo === "variavel" ? "on" : ""} onClick={() => setTipo("variavel")}>Variáveis</button>
+      </div>
+      <p className="dl-note">
+        {tipo === "fixo"
+          ? "Sai todo mês mesmo sem obra nenhuma. É esse número que os contratos de manutenção precisam cobrir."
+          : "Só existe quando tem obra. Serve para você calcular preço e margem, não entra na conta da Fase 1."}
+      </p>
+
+      <p className="dl-stat-label" style={{ marginBottom: 6 }}>Toque para adicionar e depois preencha o valor</p>
+      <div className="dl-chips">
+        {sug.map((s) => (
+          <button key={s} className={"dl-chip" + (usados.includes(s.toLowerCase()) ? " dl-chip-used" : "")}
+            onClick={() => !usados.includes(s.toLowerCase()) && add(s)}>{s}</button>
+        ))}
+      </div>
+
+      <div className="dl-form">
+        <div className="dl-f">
+          <input className="dl-in" placeholder="Outro item" value={nome} onChange={(e) => setNome(e.target.value)} />
+          <input className="dl-in" style={{ maxWidth: 110 }} inputMode="decimal" placeholder="R$" value={valor} onChange={(e) => setValor(e.target.value)} />
+        </div>
+        {tipo === "variavel" && (
+          <div className="dl-f">
+            <select className="dl-in" value={unidade} onChange={(e) => setUnidade(e.target.value)}>
+              <option value="mes">por mês (estimativa)</option>
+              <option value="obra">por obra</option>
+              <option value="percentual">% do contrato</option>
+            </select>
+          </div>
+        )}
+        <button className="dl-btn" onClick={() => add()}>Adicionar</button>
+      </div>
+
+      {lista.length === 0 && <div className="dl-empty">Nada aqui ainda. {tipo === "fixo" ? "Comece pelo pró-labore." : "Comece por material elétrico e mão de obra."}</div>}
+      {lista.map((x) => (
+        <div className="dl-row" key={x.id}>
+          <div className="dl-row-main">
+            <div className="dl-row-t">{x.nome}</div>
+            {tipo === "variavel" && <div className="dl-row-s">{x.unidade === "mes" ? "por mês" : x.unidade === "obra" ? "por obra" : "% do contrato"}</div>}
+          </div>
+          <input className="dl-in" style={{ maxWidth: 108, textAlign: "right" }} inputMode="decimal" value={x.valor}
+            placeholder="R$" onChange={(e) => edit(x.id, "valor", e.target.value)} />
+          <button className="dl-x" onClick={() => up({ custos: d.custos.filter((y) => y.id !== x.id) })}>×</button>
+        </div>
+      ))}
+      <div className="dl-total">
+        <span>{tipo === "fixo" ? "Custo fixo total" : "Variável estimado por mês"}</span>
+        <b>{brl(tipo === "fixo" ? c.custoFixo : c.varMensal)}</b>
+      </div>
+    </div>
+  );
+}
+
+/* ============================ RECORRENTE ============================ */
+function Contratos({ d, up, c, abrir }) {
+  const [f, setF] = useState({ cliente: "", valor: "", meses: "12", inicio: hoje(), escopo: "" });
+  const add = () => {
+    if (!f.cliente.trim()) return;
+    up({ contratos: [...d.contratos, { id: uid(), ...f, ativo: true, visitas: [] }] });
+    setF({ cliente: "", valor: "", meses: "12", inicio: hoje(), escopo: "" });
+  };
+  const falta = Math.max(0, c.custoFixo - c.recorrente);
+  return (
+    <div className="dl-sec">
+      <h2>Contratos de manutenção</h2>
+      <p className="dl-note">{c.custoFixo > 0 ? "Faltam " + brl(falta) + " por mês para fechar a Fase 1." : "Cadastre o custo fixo primeiro para ver quanto falta."}</p>
+      <div className="dl-form">
+        <div className="dl-f"><input className="dl-in" placeholder="Cliente" value={f.cliente} onChange={(e) => setF({ ...f, cliente: e.target.value })} /></div>
+        <div className="dl-f">
+          <input className="dl-in" inputMode="decimal" placeholder="R$ por mês" value={f.valor} onChange={(e) => setF({ ...f, valor: e.target.value })} />
+          <input className="dl-in" style={{ maxWidth: 96 }} inputMode="numeric" placeholder="meses" value={f.meses} onChange={(e) => setF({ ...f, meses: e.target.value })} />
+        </div>
+        <div className="dl-f"><input className="dl-in" type="date" value={f.inicio} onChange={(e) => setF({ ...f, inicio: e.target.value })} /></div>
+        <div className="dl-f"><input className="dl-in" placeholder="Escopo do contrato" value={f.escopo} onChange={(e) => setF({ ...f, escopo: e.target.value })} /></div>
+        <button className="dl-btn" onClick={add}>Adicionar contrato</button>
+      </div>
+      {d.contratos.length === 0 && <div className="dl-empty">Alvos em São Mateus: supermercados, postos, galpões do polo industrial, clínicas, hotéis de Guriri e prédios comerciais.</div>}
+      {d.contratos.map((x) => {
+        const vis = x.visitas || [];
+        const prox = vis.filter((v) => !v.feita && v.data).sort((a, b) => a.data.localeCompare(b.data))[0];
+        return (
+          <div className="dl-row" key={x.id}>
+            <button className="dl-row-main dl-row-btn" style={{ border: "none", background: "none", padding: 0 }} onClick={() => abrir(x.id)}>
+              <div className="dl-row-t">{x.cliente}</div>
+              <div className="dl-row-s">
+                {x.ativo === false ? "encerrado · " : ""}{prox ? "próxima visita " + br(prox.data) : vis.length ? "sem visita agendada" : "nenhuma visita cadastrada"}
+              </div>
+            </button>
+            <div className="dl-row-v" style={{ color: x.ativo === false ? "var(--muted)" : "var(--terra)" }}>{brl(num(x.valor))}</div>
+            <button className="dl-x" onClick={() => abrir(x.id)}>›</button>
+          </div>
+        );
+      })}
+      <div className="dl-total"><span>Recorrente ativo</span><b>{brl(c.recorrente)}</b></div>
+    </div>
+  );
+}
+
+function ContratoDetalhe({ d, upItem, id, voltar }) {
+  const x = d.contratos.find((y) => y.id === id);
+  const [v, setV] = useState({ data: hoje(), servico: "", obs: "" });
+  if (!x) return <button className="dl-back" onClick={voltar}>‹ voltar</button>;
+  const vis = (x.visitas || []).slice().sort((a, b) => (a.data || "").localeCompare(b.data || ""));
+  const addVisita = () => {
+    if (!v.data) return;
+    upItem("contratos", id, { visitas: [...(x.visitas || []), { id: uid(), ...v, feita: false }] });
+    setV({ data: hoje(), servico: "", obs: "" });
+  };
+  const setVis = (vid, patch) => upItem("contratos", id, { visitas: (x.visitas || []).map((k) => (k.id === vid ? { ...k, ...patch } : k)) });
+
+  return (
+    <div className="dl-sec">
+      <button className="dl-back" onClick={voltar}>‹ contratos</button>
+      <h2>{x.cliente}</h2>
+      <p className="dl-note">{brl(num(x.valor))} por mês · {x.meses} meses desde {br(x.inicio)}</p>
+
+      <div className="dl-form">
+        <div className="dl-f">
+          <input className="dl-in" inputMode="decimal" value={x.valor} placeholder="R$ mês" onChange={(e) => upItem("contratos", id, { valor: e.target.value })} />
+          <select className="dl-in" style={{ maxWidth: 130 }} value={x.ativo === false ? "n" : "s"} onChange={(e) => upItem("contratos", id, { ativo: e.target.value === "s" })}>
+            <option value="s">ativo</option><option value="n">encerrado</option>
+          </select>
+        </div>
+        <textarea className="dl-in dl-ta" placeholder="Escopo: o que está incluso na visita" value={x.escopo || ""} onChange={(e) => upItem("contratos", id, { escopo: e.target.value })} />
+      </div>
+
+      <h3 style={{ marginBottom: 8 }}>Agenda de visitas</h3>
+      <div className="dl-form">
+        <div className="dl-f">
+          <input className="dl-in" type="date" value={v.data} onChange={(e) => setV({ ...v, data: e.target.value })} />
+          <input className="dl-in" placeholder="Serviço" value={v.servico} onChange={(e) => setV({ ...v, servico: e.target.value })} />
+        </div>
+        <div className="dl-f"><textarea className="dl-in dl-ta" placeholder="Observações: o que verificar, o que ficou pendente" value={v.obs} onChange={(e) => setV({ ...v, obs: e.target.value })} /></div>
+        <button className="dl-btn" onClick={addVisita}>Agendar visita</button>
+      </div>
+
+      {vis.length === 0 && <div className="dl-empty">Nenhuma visita agendada.</div>}
+      {vis.map((k) => {
+        const atrasada = !k.feita && k.data < hoje();
+        return (
+          <div key={k.id} style={{ marginBottom: 7 }}>
+            <div className="dl-row" style={{ marginBottom: 0 }}>
+              <div className="dl-row-main">
+                <div className="dl-row-t">{br(k.data)} · {k.servico || "visita"}</div>
+                {k.obs && <div className="dl-row-s">{k.obs}</div>}
+              </div>
+              <span className={"dl-pill" + (k.feita ? " dl-pill-ok" : atrasada ? " dl-pill-bad" : "")}>{k.feita ? "feita" : atrasada ? "atrasada" : "agendada"}</span>
+              <button className="dl-x" onClick={() => setVis(k.id, { feita: !k.feita })}>{k.feita ? "↺" : "✓"}</button>
+              <button className="dl-x" onClick={() => upItem("contratos", id, { visitas: (x.visitas || []).filter((y) => y.id !== k.id) })}>×</button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* =============================== OBRAS =============================== */
+function Obras({ d, up, c, abrir }) {
+  const [f, setF] = useState({ cliente: "", nome: "", contrato: "", custoPrevisto: "", inicio: hoje(), prazo: "" });
+  const add = () => {
+    if (!f.cliente.trim() && !f.nome.trim()) return;
+    up({ obras: [...d.obras, { id: uid(), ...f, status: "andamento", medicoes: [], gastos: [], etapas: [], equipe: [], obs: "" }] });
+    setF({ cliente: "", nome: "", contrato: "", custoPrevisto: "", inicio: hoje(), prazo: "" });
+  };
+  return (
+    <div className="dl-sec">
+      <h2>Obras</h2>
+      <p className="dl-note">Cadastre a obra aqui e entre nela para lançar medição, gasto, etapa e equipe.</p>
+      <div className="dl-form">
+        <div className="dl-f">
+          <input className="dl-in" placeholder="Cliente" value={f.cliente} onChange={(e) => setF({ ...f, cliente: e.target.value })} />
+          <input className="dl-in" placeholder="Obra" value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} />
+        </div>
+        <div className="dl-f">
+          <input className="dl-in" inputMode="decimal" placeholder="Contrato R$" value={f.contrato} onChange={(e) => setF({ ...f, contrato: e.target.value })} />
+          <input className="dl-in" inputMode="decimal" placeholder="Custo previsto R$" value={f.custoPrevisto} onChange={(e) => setF({ ...f, custoPrevisto: e.target.value })} />
+        </div>
+        <div className="dl-f">
+          <input className="dl-in" type="date" value={f.inicio} onChange={(e) => setF({ ...f, inicio: e.target.value })} />
+          <input className="dl-in" type="date" value={f.prazo} onChange={(e) => setF({ ...f, prazo: e.target.value })} />
+        </div>
+        <button className="dl-btn" onClick={add}>Criar obra</button>
+      </div>
+      {d.obras.length === 0 && <div className="dl-empty">Nenhuma obra cadastrada.</div>}
+      {d.obras.map((o) => {
+        const k = c.obraCalc[o.id];
+        return (
+          <div className="dl-row" key={o.id}>
+            <button className="dl-row-main dl-row-btn" style={{ border: "none", background: "none", padding: 0 }} onClick={() => abrir(o.id)}>
+              <div className="dl-row-t">{o.nome || o.cliente}</div>
+              <div className="dl-row-s">{o.cliente && o.nome ? o.cliente + " · " : ""}margem {brl(k.margem)} · a receber {brl(k.aReceber)}</div>
+              <div className="dl-prog" style={{ marginTop: 6 }}><i style={{ width: k.progresso + "%" }} /></div>
+            </button>
+            <button className="dl-x" onClick={() => abrir(o.id)}>›</button>
+          </div>
+        );
+      })}
+      <div className="dl-total"><span>Margem acumulada</span><b>{brl(c.margemObras)}</b></div>
+    </div>
+  );
+}
+
+function ObraDetalhe({ d, up, upItem, c, id, voltar }) {
+  const o = d.obras.find((x) => x.id === id);
+  const [sub, setSub] = useState("resumo");
+  const [med, setMed] = useState({ data: hoje(), descricao: "", valor: "" });
+  const [gas, setGas] = useState({ data: hoje(), descricao: "", valor: "", cat: "material" });
+  const [eta, setEta] = useState("");
+  const [eq, setEq] = useState({ nome: "", funcao: "", diaria: "" });
+  if (!o) return <button className="dl-back" onClick={voltar}>‹ voltar</button>;
+  const k = c.obraCalc[id];
+  const patchLista = (campo, arr) => upItem("obras", id, { [campo]: arr });
+
+  const lancarNoCaixa = (m) => {
+    up({
+      obras: d.obras.map((x) => (x.id === id ? { ...x, medicoes: (x.medicoes || []).map((y) => (y.id === m.id ? { ...y, recebida: true } : y)) } : x)),
+      lancamentos: [{ id: uid(), data: hoje(), desc: (o.nome || o.cliente) + " · " + (m.descricao || "medição"), valor: m.valor,
+        tipo: "e", forma: "Pix", status: "pago", categoria: "obra", obraId: id }, ...d.lancamentos],
+    });
+  };
+
+  return (
+    <div className="dl-sec">
+      <button className="dl-back" onClick={voltar}>‹ obras</button>
+      <h2>{o.nome || o.cliente}</h2>
+      <p className="dl-note">{o.cliente}{o.prazo ? " · prazo " + br(o.prazo) : ""}</p>
+
+      <div className="dl-sub2">
+        {[["resumo", "Resumo"], ["medicoes", "Medições"], ["gastos", "Gastos"], ["etapas", "Etapas"], ["equipe", "Equipe"]].map(([kk, r]) => (
+          <button key={kk} className={sub === kk ? "on" : ""} onClick={() => setSub(kk)}>{r}</button>
+        ))}
+      </div>
+
+      {sub === "resumo" && (
+        <>
+          <div className="dl-grid" style={{ marginTop: 0 }}>
+            <div className="dl-stat"><p className="dl-stat-label">Contrato</p><div className="dl-stat-val">{brl(num(o.contrato))}</div></div>
+            <div className="dl-stat"><p className="dl-stat-label">Gasto real</p><div className="dl-stat-val">{brl(k.gasto)}</div></div>
+            <div className="dl-stat"><p className="dl-stat-label">Margem</p><div className="dl-stat-val" style={{ color: k.margem >= 0 ? "var(--terra)" : "var(--fase)" }}>{brl(k.margem)}</div></div>
+            <div className="dl-stat"><p className="dl-stat-label">A receber</p><div className="dl-stat-val">{brl(k.aReceber)}</div></div>
+            <div className="dl-stat"><p className="dl-stat-label">Ainda não medido</p><div className="dl-stat-val">{brl(k.naoMedido)}</div></div>
+            <div className="dl-stat"><p className="dl-stat-label">Execução</p><div className="dl-stat-val">{k.progresso.toFixed(0)}%</div></div>
+          </div>
+          {k.gasto > num(o.custoPrevisto) && num(o.custoPrevisto) > 0 && (
+            <div className="dl-alert"><h3>Estouro de custo</h3><p>O gasto real passou o previsto em {brl(k.gasto - num(o.custoPrevisto))}.</p></div>
+          )}
+          <div className="dl-form" style={{ marginTop: 12 }}>
+            <div className="dl-f">
+              <input className="dl-in" inputMode="decimal" value={o.contrato} placeholder="Contrato R$" onChange={(e) => upItem("obras", id, { contrato: e.target.value })} />
+              <input className="dl-in" inputMode="decimal" value={o.custoPrevisto} placeholder="Custo previsto" onChange={(e) => upItem("obras", id, { custoPrevisto: e.target.value })} />
+            </div>
+            <div className="dl-f">
+              <select className="dl-in" value={o.status} onChange={(e) => upItem("obras", id, { status: e.target.value })}>
+                <option value="orcamento">em orçamento</option><option value="andamento">em andamento</option><option value="fechada">encerrada</option>
+              </select>
+              <input className="dl-in" type="date" value={o.prazo || ""} onChange={(e) => upItem("obras", id, { prazo: e.target.value })} />
+            </div>
+            <textarea className="dl-in dl-ta" placeholder="Observações da obra" value={o.obs || ""} onChange={(e) => upItem("obras", id, { obs: e.target.value })} />
+          </div>
+          <button className="dl-btn-2" onClick={() => { up({ obras: d.obras.filter((x) => x.id !== id) }); voltar(); }}>Excluir obra</button>
+        </>
+      )}
+
+      {sub === "medicoes" && (
+        <>
+          <p className="dl-note">Cada medição vira uma cobrança. Ao marcar como recebida, ela entra no caixa automaticamente.</p>
+          <div className="dl-form">
+            <div className="dl-f">
+              <input className="dl-in" type="date" value={med.data} onChange={(e) => setMed({ ...med, data: e.target.value })} />
+              <input className="dl-in" inputMode="decimal" placeholder="R$" value={med.valor} onChange={(e) => setMed({ ...med, valor: e.target.value })} />
+            </div>
+            <div className="dl-f"><input className="dl-in" placeholder="Descrição da medição" value={med.descricao} onChange={(e) => setMed({ ...med, descricao: e.target.value })} /></div>
+            <button className="dl-btn" onClick={() => { if (!num(med.valor)) return; patchLista("medicoes", [...(o.medicoes || []), { id: uid(), ...med, recebida: false }]); setMed({ data: hoje(), descricao: "", valor: "" }); }}>Lançar medição</button>
+          </div>
+          {(o.medicoes || []).length === 0 && <div className="dl-empty">Nenhuma medição lançada.</div>}
+          {(o.medicoes || []).map((m) => (
+            <div className="dl-row" key={m.id}>
+              <div className="dl-row-main">
+                <div className="dl-row-t">{m.descricao || "medição"}</div>
+                <div className="dl-row-s">{br(m.data)} · {m.recebida ? "recebida" : "a receber"}</div>
+              </div>
+              <div className="dl-row-v" style={{ color: m.recebida ? "var(--terra)" : "var(--cobre)" }}>{brl(num(m.valor))}</div>
+              {!m.recebida && <button className="dl-x" title="marcar como recebida" onClick={() => lancarNoCaixa(m)}>✓</button>}
+              <button className="dl-x" onClick={() => patchLista("medicoes", (o.medicoes || []).filter((y) => y.id !== m.id))}>×</button>
+            </div>
+          ))}
+          <div className="dl-total"><span>Medido</span><b>{brl(k.med)}</b></div>
+          <h3 style={{ marginTop: 18, marginBottom: 6 }}>Recebimentos</h3>
+          <p className="dl-note">Tudo que entrou por essa obra, lançado aqui ou direto na aba Caixa.</p>
+          {k.lanc.filter((l) => l.tipo === "e").length === 0 && <div className="dl-empty">Nada recebido ainda.</div>}
+          {k.lanc.filter((l) => l.tipo === "e").map((l) => (
+            <div className="dl-row" key={l.id}>
+              <div className="dl-row-main"><div className="dl-row-t">{l.desc}</div><div className="dl-row-s">{br(l.data)} · {l.forma}{l.status === "previsto" ? " · previsto" : ""}</div></div>
+              <div className="dl-row-v" style={{ color: "var(--terra)" }}>{brl(num(l.valor))}</div>
+            </div>
+          ))}
+          <div className="dl-total"><span>Recebido</span><b>{brl(k.receb)}</b></div>
+        </>
+      )}
+
+      {sub === "gastos" && (
+        <>
+          <div className="dl-form">
+            <div className="dl-f">
+              <input className="dl-in" type="date" value={gas.data} onChange={(e) => setGas({ ...gas, data: e.target.value })} />
+              <input className="dl-in" inputMode="decimal" placeholder="R$" value={gas.valor} onChange={(e) => setGas({ ...gas, valor: e.target.value })} />
+            </div>
+            <div className="dl-f">
+              <input className="dl-in" placeholder="Descrição" value={gas.descricao} onChange={(e) => setGas({ ...gas, descricao: e.target.value })} />
+              <select className="dl-in" style={{ maxWidth: 130 }} value={gas.cat} onChange={(e) => setGas({ ...gas, cat: e.target.value })}>
+                <option value="material">material</option><option value="maodeobra">mão de obra</option><option value="outro">outro</option>
+              </select>
+            </div>
+            <button className="dl-btn" onClick={() => { if (!num(gas.valor)) return; up({ lancamentos: [{ id: uid(), data: gas.data, desc: gas.descricao || gas.cat, valor: gas.valor, tipo: "s", forma: "Pix", status: "pago", categoria: gas.cat === "outro" ? "outra" : gas.cat, obraId: id }, ...d.lancamentos] }); setGas({ data: hoje(), descricao: "", valor: "", cat: "material" }); }}>Lançar gasto</button>
+          </div>
+          <p className="dl-note">Todo gasto lançado aqui sai do caixa da empresa automaticamente.</p>
+          {k.lanc.filter((l) => l.tipo === "s").length === 0 && <div className="dl-empty">Nenhum gasto lançado.</div>}
+          {k.lanc.filter((l) => l.tipo === "s").map((g) => (
+            <div className="dl-row" key={g.id}>
+              <div className="dl-row-main"><div className="dl-row-t">{g.desc}</div><div className="dl-row-s">{br(g.data)} · {g.categoria}</div></div>
+              <div className="dl-row-v" style={{ color: "var(--fase)" }}>{brl(num(g.valor))}</div>
+              <button className="dl-x" onClick={() => up({ lancamentos: d.lancamentos.filter((y) => y.id !== g.id) })}>×</button>
+            </div>
+          ))}
+          <div className="dl-total"><span>Gasto na obra</span><b>{brl(k.gasto)}</b></div>
+        </>
+      )}
+
+      {sub === "etapas" && (
+        <>
+          <div className="dl-form">
+            <div className="dl-f"><input className="dl-in" placeholder="Etapa (ex: infra de eletrodutos)" value={eta} onChange={(e) => setEta(e.target.value)} /></div>
+            <button className="dl-btn" onClick={() => { if (!eta.trim()) return; patchLista("etapas", [...(o.etapas || []), { id: uid(), t: eta.trim(), ok: false }]); setEta(""); }}>Adicionar etapa</button>
+          </div>
+          {(o.etapas || []).length === 0 && <div className="dl-empty">Sem etapas. Elas alimentam a barra de execução da obra.</div>}
+          {(o.etapas || []).map((e) => (
+            <label className="dl-chk" key={e.id}>
+              <input type="checkbox" checked={!!e.ok} onChange={() => patchLista("etapas", (o.etapas || []).map((y) => (y.id === e.id ? { ...y, ok: !y.ok } : y)))} />
+              <span style={{ flex: 1 }}>{e.t}</span>
+              <button className="dl-x" onClick={() => patchLista("etapas", (o.etapas || []).filter((y) => y.id !== e.id))}>×</button>
+            </label>
+          ))}
+        </>
+      )}
+
+      {sub === "equipe" && (
+        <>
+          <div className="dl-form">
+            <div className="dl-f">
+              <input className="dl-in" placeholder="Nome" value={eq.nome} onChange={(e) => setEq({ ...eq, nome: e.target.value })} />
+              <input className="dl-in" style={{ maxWidth: 120 }} inputMode="decimal" placeholder="diária R$" value={eq.diaria} onChange={(e) => setEq({ ...eq, diaria: e.target.value })} />
+            </div>
+            <div className="dl-f"><input className="dl-in" placeholder="Função" value={eq.funcao} onChange={(e) => setEq({ ...eq, funcao: e.target.value })} /></div>
+            <button className="dl-btn" onClick={() => { if (!eq.nome.trim()) return; patchLista("equipe", [...(o.equipe || []), { id: uid(), ...eq }]); setEq({ nome: "", funcao: "", diaria: "" }); }}>Adicionar</button>
+          </div>
+          {(o.equipe || []).length === 0 && <div className="dl-empty">Ninguém alocado nessa obra.</div>}
+          {(o.equipe || []).map((p) => (
+            <div className="dl-row" key={p.id}>
+              <div className="dl-row-main"><div className="dl-row-t">{p.nome}</div><div className="dl-row-s">{p.funcao}</div></div>
+              <div className="dl-row-v">{brl(num(p.diaria))}</div>
+              <button className="dl-x" onClick={() => patchLista("equipe", (o.equipe || []).filter((y) => y.id !== p.id))}>×</button>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* =============================== CAIXA =============================== */
+function Caixa({ d, up, c }) {
+  const [sub, setSub] = useState("conta");
+  return (
+    <div className="dl-sec">
+      <h2>Caixa</h2>
+      <div className="dl-sub2" style={{ marginTop: 8 }}>
+        {[["conta", "Conta"], ["receber", "A receber e a pagar"], ["fechar", "Fechar o mês"], ["fluxo", "Fluxo de caixa"]].map(([k, r]) => (
+          <button key={k} className={sub === k ? "on" : ""} onClick={() => setSub(k)}>{r}</button>
+        ))}
+      </div>
+      {sub === "conta" && <CaixaConta d={d} up={up} c={c} />}
+      {sub === "receber" && <CaixaReceber d={d} up={up} c={c} />}
+      {sub === "fechar" && <CaixaFechar d={d} up={up} c={c} />}
+      {sub === "fluxo" && <CaixaFluxo d={d} c={c} />}
+    </div>
+  );
+}
+
+function CaixaConta({ d, up, c }) {
+  const [f, setF] = useState({ tipo: "e", desc: "", valor: "", forma: "Pix", data: hoje(), categoria: "obra", status: "pago", vencimento: "" });
+  const add = () => {
+    if (!num(f.valor)) return;
+    const l = { id: uid(), ...f, aporte: f.categoria === "ativo" && f.tipo === "s" && !!f.ativoId };
+    up({ lancamentos: [l, ...d.lancamentos] });
+    setF({ ...f, desc: "", valor: "", vencimento: "" });
+  };
+  const cats = f.tipo === "e"
+    ? [["obra", "obra"], ["manutencao", "contrato de manutenção"], ["ativo", "ativo"], ["outra", "outra"]]
+    : [["fixo", "custo fixo"], ["material", "material"], ["maodeobra", "mão de obra"], ["ativo", "aporte em ativo"], ["imposto", "imposto"], ["outra", "outra"]];
+  const ligaObra = ["obra", "material", "maodeobra"].includes(f.categoria);
+  const ligaAtivo = f.categoria === "ativo";
+  return (
+    <>
+      <div className="dl-grid" style={{ marginTop: 0, marginBottom: 10 }}>
+        <div className="dl-stat"><p className="dl-stat-label">Saldo em conta</p><div className="dl-stat-val">{brl(c.caixa)}</div></div>
+        <div className="dl-stat">
+          <p className="dl-stat-label">Saldo projetado</p>
+          <div className="dl-stat-val">{brl(c.caixa + c.aReceber - c.aPagar)}</div>
+        </div>
+      </div>
+      <div className="dl-form">
+        <div className="dl-f"><input className="dl-in" inputMode="decimal" placeholder="Saldo inicial da conta" value={d.saldoInicial} onChange={(e) => up({ saldoInicial: e.target.value })} /></div>
+      </div>
+
+      <div className="dl-form">
+        <div className="dl-f">
+          <select className="dl-in" style={{ maxWidth: 120 }} value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value, categoria: e.target.value === "e" ? "obra" : "fixo" })}>
+            <option value="e">recebi</option><option value="s">paguei</option>
+          </select>
+          <input className="dl-in" inputMode="decimal" placeholder="R$" value={f.valor} onChange={(e) => setF({ ...f, valor: e.target.value })} />
+        </div>
+        <div className="dl-f"><input className="dl-in" placeholder={f.tipo === "e" ? "De quem / referente a" : "Para quem / referente a"} value={f.desc} onChange={(e) => setF({ ...f, desc: e.target.value })} /></div>
+        <div className="dl-f">
+          <select className="dl-in" value={f.forma} onChange={(e) => setF({ ...f, forma: e.target.value })}>
+            {FORMAS.map((x) => <option key={x} value={x}>{x}</option>)}
+          </select>
+          <select className="dl-in" value={f.categoria} onChange={(e) => setF({ ...f, categoria: e.target.value })}>
+            {cats.map(([v, r]) => <option key={v} value={v}>{r}</option>)}
+          </select>
+        </div>
+        {ligaObra && d.obras.length > 0 && (
+          <div className="dl-f">
+            <select className="dl-in" value={f.obraId || ""} onChange={(e) => setF({ ...f, obraId: e.target.value, ativoId: "" })}>
+              <option value="">sem obra vinculada</option>
+              {d.obras.map((o) => <option key={o.id} value={o.id}>{o.nome || o.cliente}</option>)}
+            </select>
+          </div>
+        )}
+        {ligaAtivo && d.ativos.length > 0 && (
+          <div className="dl-f">
+            <select className="dl-in" value={f.ativoId || ""} onChange={(e) => setF({ ...f, ativoId: e.target.value, obraId: "", aporte: f.tipo === "s" })}>
+              <option value="">sem ativo vinculado</option>
+              {d.ativos.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}
+            </select>
+          </div>
+        )}
+        <div className="dl-f">
+          <select className="dl-in" style={{ maxWidth: 145 }} value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
+            <option value="pago">já entrou / saiu</option><option value="previsto">ainda vai cair</option>
+          </select>
+          <input className="dl-in" type="date" value={f.status === "previsto" ? f.vencimento || "" : f.data}
+            onChange={(e) => setF(f.status === "previsto" ? { ...f, vencimento: e.target.value } : { ...f, data: e.target.value })} />
+        </div>
+        <button className="dl-btn" onClick={add}>Lançar</button>
+      </div>
+
+      <h3 style={{ marginBottom: 8 }}>Movimento</h3>
+      {d.lancamentos.filter((l) => l.status !== "previsto").length === 0 && <div className="dl-empty">Nenhum movimento ainda.</div>}
+      {d.lancamentos.filter((l) => l.status !== "previsto").slice(0, 50).map((l) => (
+        <div className="dl-row" key={l.id}>
+          <div className="dl-row-main">
+            <div className="dl-row-t">{l.desc || l.categoria}</div>
+            <div className="dl-row-s">{br(l.data)} · {l.forma} · {l.categoria}
+              {l.obraId && (d.obras.find((o) => o.id === l.obraId) ? " · " + (d.obras.find((o) => o.id === l.obraId).nome || d.obras.find((o) => o.id === l.obraId).cliente) : "")}
+              {l.ativoId && (d.ativos.find((a) => a.id === l.ativoId) ? " · " + d.ativos.find((a) => a.id === l.ativoId).nome : "")}
+            </div>
+          </div>
+          <div className="dl-row-v" style={{ color: l.tipo === "e" ? "var(--terra)" : "var(--fase)" }}>{l.tipo === "e" ? "+" : "−"}{brl(num(l.valor))}</div>
+          <button className="dl-x" onClick={() => up({ lancamentos: d.lancamentos.filter((y) => y.id !== l.id) })}>×</button>
+        </div>
+      ))}
+      <div className="dl-total"><span>Saldo</span><b>{brl(c.caixa)}</b></div>
+    </>
+  );
+}
+
+function CaixaReceber({ d, up, c }) {
+  const prev = d.lancamentos.filter((l) => l.status === "previsto")
+    .sort((a, b) => (a.vencimento || "9999").localeCompare(b.vencimento || "9999"));
+  const baixar = (l) => up({ lancamentos: d.lancamentos.map((y) => (y.id === l.id ? { ...y, status: "pago", data: hoje() } : y)) });
+  return (
+    <>
+      <div className="dl-grid" style={{ marginTop: 0, marginBottom: 12 }}>
+        <div className="dl-stat"><p className="dl-stat-label">A receber</p><div className="dl-stat-val" style={{ color: "var(--terra)" }}>{brl(c.aReceber)}</div></div>
+        <div className="dl-stat"><p className="dl-stat-label">A pagar</p><div className="dl-stat-val" style={{ color: "var(--fase)" }}>{brl(c.aPagar)}</div></div>
+      </div>
+      {c.atrasados.length > 0 && (
+        <div className="dl-alert"><h3>Cobrar hoje</h3>
+          {c.atrasados.map((l) => <p key={l.id}>{l.desc} · {brl(num(l.valor))} · venceu {br(l.vencimento)} ({dias(l.vencimento, hoje())} dias)</p>)}
+        </div>
+      )}
+      {prev.length === 0 && <div className="dl-empty">Nada previsto. Lance na aba Conta escolhendo “ainda vai cair”.</div>}
+      {prev.map((l) => {
+        const atras = l.vencimento && l.vencimento < hoje();
+        const faltam = l.vencimento ? dias(hoje(), l.vencimento) : null;
+        return (
+          <div className="dl-row" key={l.id}>
+            <div className="dl-row-main">
+              <div className="dl-row-t">{l.desc || l.categoria}</div>
+              <div className="dl-row-s">
+                {l.tipo === "e" ? "receber" : "pagar"} · {l.vencimento ? br(l.vencimento) : "sem data"}
+                {faltam !== null && (atras ? " · vencido há " + Math.abs(faltam) + " dias" : " · em " + faltam + " dias")}
+              </div>
+            </div>
+            <div className="dl-row-v" style={{ color: atras ? "var(--fase)" : l.tipo === "e" ? "var(--terra)" : "var(--carbon)" }}>{brl(num(l.valor))}</div>
+            <button className="dl-x" title="dar baixa" onClick={() => baixar(l)}>✓</button>
+            <button className="dl-x" onClick={() => up({ lancamentos: d.lancamentos.filter((y) => y.id !== l.id) })}>×</button>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function CaixaFluxo({ d, c }) {
+  const linhas = useMemo(() => {
+    const base = ymHoje();
+    const meses = [-3, -2, -1, 0, 1, 2].map((k) => addMes(base, k));
+    const zero = () => Object.fromEntries(meses.map((m) => [m, 0]));
+    const ent = { obra: zero(), manutencao: zero(), ativo: zero(), outra: zero() };
+    const sai = { fixo: zero(), material: zero(), maodeobra: zero(), imposto: zero(), outra: zero() };
+    d.lancamentos.forEach((l) => {
+      const ym = (l.status === "previsto" ? l.vencimento : l.data) || hoje();
+      const m = ym.slice(0, 7);
+      if (!meses.includes(m)) return;
+      const alvo = l.tipo === "e" ? ent : sai;
+      const cat = alvo[l.categoria] ? l.categoria : "outra";
+      alvo[cat][m] += num(l.valor);
+    });
+    // projeção dos meses futuros
+    meses.forEach((m) => {
+      if (m > base) {
+        ent.manutencao[m] += c.recorrente;
+        sai.fixo[m] += c.custoFixo;
+      }
+    });
+    return { meses, ent, sai };
+  }, [d, c]);
+
+  const { meses, ent, sai } = linhas;
+  const somaCol = (obj, m) => Object.values(obj).reduce((s, r) => s + r[m], 0);
+  let acumulado = num(d.saldoInicial);
+  const saldos = {};
+  meses.forEach((m) => { acumulado += somaCol(ent, m) - somaCol(sai, m); saldos[m] = acumulado; });
+
+  const nomes = { obra: "Obras", manutencao: "Contratos de manutenção", ativo: "Ativos", outra: "Outras",
+    fixo: "Custo fixo", material: "Material", maodeobra: "Mão de obra", imposto: "Impostos" };
+
+  return (
+    <>
+      <p className="dl-note">Realizado nos meses passados, projetado nos futuros usando o custo fixo e o recorrente já cadastrados.</p>
+      <div className="dl-scroll">
+        <table className="dl-table">
+          <thead><tr><th>Linha</th>{meses.map((m) => <th key={m}>{mesLabel(m)}</th>)}</tr></thead>
+          <tbody>
+            <tr className="g"><td>Entradas</td>{meses.map((m) => <td key={m}>{brl(somaCol(ent, m))}</td>)}</tr>
+            {Object.keys(ent).map((k) => (
+              <tr key={k}><td>{nomes[k]}</td>{meses.map((m) => <td key={m}>{ent[k][m] ? brl(ent[k][m]) : "—"}</td>)}</tr>
+            ))}
+            <tr className="g"><td>Saídas</td>{meses.map((m) => <td key={m}>{brl(somaCol(sai, m))}</td>)}</tr>
+            {Object.keys(sai).map((k) => (
+              <tr key={k}><td>{nomes[k] || "Outras"}</td>{meses.map((m) => <td key={m}>{sai[k][m] ? brl(sai[k][m]) : "—"}</td>)}</tr>
+            ))}
+            <tr className="r"><td>Resultado do mês</td>{meses.map((m) => <td key={m} style={{ color: somaCol(ent, m) - somaCol(sai, m) < 0 ? "#B4292E" : "#4F8B3B" }}>{brl(somaCol(ent, m) - somaCol(sai, m))}</td>)}</tr>
+            <tr className="r"><td>Saldo acumulado</td>{meses.map((m) => <td key={m} style={{ color: saldos[m] < 0 ? "#B4292E" : undefined }}>{brl(saldos[m])}</td>)}</tr>
+          </tbody>
+        </table>
+      </div>
+      <div className="dl-info" style={{ marginTop: 12 }}>
+        <h3>Ponto de equilíbrio</h3>
+        <p>Com custo fixo de {brl(c.custoFixo)} e variável estimado de {brl(c.varMensal)}, a empresa precisa faturar pelo menos {brl(c.custoFixo + c.varMensal)} por mês para não consumir caixa.</p>
+      </div>
+    </>
+  );
+}
+
+/* =============================== METAS =============================== */
+function Metas({ d, up, c, valorMeta }) {
+  const [f, setF] = useState({ nome: "", alvo: "", prazo: "", fonte: "manual", atual: "" });
+  const [sub, setSub] = useState("");
+  const add = () => {
+    if (!f.nome.trim()) return;
+    up({ metas: [...d.metas, { id: uid(), ...f, submetas: [] }] });
+    setF({ nome: "", alvo: "", prazo: "", fonte: "manual", atual: "" });
+  };
+  const edit = (id, patch) => up({ metas: d.metas.map((m) => (m.id === id ? { ...m, ...patch } : m)) });
+  const p = d.potes;
+  const bloqueado = c.reservaMeses < 6;
+  const [lucro, setLucro] = useState("");
+  const distribuir = () => {
+    const v = num(lucro);
+    if (v <= 0) return;
+    const paraReserva = bloqueado ? v * ((p.reserva + p.ativos) / 100) : v * (p.reserva / 100);
+    up({ reserva: String(num(d.reserva) + paraReserva), giro: String(num(d.giro) + v * (p.giro / 100)),
+      fundoAtivos: String(num(d.fundoAtivos) + (bloqueado ? 0 : v * (p.ativos / 100))) });
+    setLucro("");
+  };
+
+  return (
+    <div className="dl-sec">
+      <h2>Metas</h2>
+      <p className="dl-note">Meta com fonte automática se atualiza sozinha conforme você usa o painel.</p>
+      <div className="dl-form">
+        <div className="dl-f"><input className="dl-in" placeholder="Objetivo" value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} /></div>
+        <div className="dl-f">
+          <input className="dl-in" inputMode="decimal" placeholder="Alvo R$" value={f.alvo} onChange={(e) => setF({ ...f, alvo: e.target.value })} />
+          <input className="dl-in" type="date" value={f.prazo} onChange={(e) => setF({ ...f, prazo: e.target.value })} />
+        </div>
+        <div className="dl-f">
+          <select className="dl-in" value={f.fonte} onChange={(e) => setF({ ...f, fonte: e.target.value })}>
+            <option value="manual">acompanho na mão</option>
+            <option value="recorrente">soma dos contratos recorrentes</option>
+            <option value="reserva">valor da reserva</option>
+            <option value="caixa">saldo em caixa</option>
+            <option value="ativos">renda dos ativos</option>
+          </select>
+        </div>
+        <button className="dl-btn" onClick={add}>Criar meta</button>
+      </div>
+
+      {d.metas.length === 0 && (
+        <div className="dl-empty">
+          Sugestões para começar: recorrente cobrir o custo fixo de {brl(c.custoFixo || 0)}; reserva de 6 meses; primeiro ativo comprado.
+        </div>
+      )}
+      {d.metas.map((m) => {
+        const at = valorMeta(m), alvo = num(m.alvo);
+        const pct = alvo > 0 ? Math.min(100, (at / alvo) * 100) : 0;
+        const pronta = at >= alvo && alvo > 0;
+        const subs = m.submetas || [];
+        return (
+          <div key={m.id} style={{ marginBottom: 9 }}>
+            <div className="dl-row" style={{ marginBottom: 0, display: "block", borderColor: pronta ? "var(--terra)" : undefined }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                <div className="dl-row-main">
+                  <div className="dl-row-t">{m.nome}</div>
+                  <div className="dl-row-s">
+                    {pronta ? "alcançada" : "faltam " + brl(alvo - at)} · {brl(at)} de {brl(alvo)}
+                    {m.prazo ? " · até " + br(m.prazo) : ""}
+                  </div>
+                </div>
+                <button className="dl-x" onClick={() => up({ metas: d.metas.filter((y) => y.id !== m.id) })}>×</button>
+              </div>
+              <div className="dl-prog"><i style={{ width: pct + "%", background: pronta ? "var(--terra)" : "var(--cobre)" }} /></div>
+              {m.fonte === "manual" && (
+                <input className="dl-in" style={{ marginTop: 8 }} inputMode="decimal" placeholder="onde estou hoje R$"
+                  value={m.atual} onChange={(e) => edit(m.id, { atual: e.target.value })} />
+              )}
+            </div>
+            <div className="dl-cond">
+              {subs.map((s) => (
+                <label className="dl-cond-row" key={s.id} style={{ cursor: "pointer" }}>
+                  <input type="checkbox" checked={!!s.ok} style={{ marginTop: 4 }}
+                    onChange={() => edit(m.id, { submetas: subs.map((y) => (y.id === s.id ? { ...y, ok: !y.ok } : y)) })} />
+                  <span style={{ flex: 1, textDecoration: s.ok ? "line-through" : "none", color: s.ok ? "var(--muted)" : undefined }}>{s.t}</span>
+                  <button className="dl-x" onClick={() => edit(m.id, { submetas: subs.filter((y) => y.id !== s.id) })}>×</button>
+                </label>
+              ))}
+              <div className="dl-f" style={{ marginTop: 6, marginBottom: 0 }}>
+                <input className="dl-in" placeholder="Nova submeta" value={sub} onChange={(e) => setSub(e.target.value)} />
+                <button className="dl-btn-2" onClick={() => { if (!sub.trim()) return; edit(m.id, { submetas: [...subs, { id: uid(), t: sub.trim(), ok: false }] }); setSub(""); }}>+</button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      <h3 style={{ marginTop: 22, marginBottom: 8 }}>Divisão do lucro</h3>
+      <div className="dl-grid" style={{ marginTop: 0, marginBottom: 10 }}>
+        <div className="dl-stat"><p className="dl-stat-label">1 · Reserva</p><div className="dl-stat-val">{brl(num(d.reserva))}</div><p className="dl-row-s">{c.reservaMeses.toFixed(1)} de 6 meses</p></div>
+        <div className="dl-stat"><p className="dl-stat-label">2 · Capital de giro</p><div className="dl-stat-val">{brl(num(d.giro))}</div></div>
+        <div className="dl-stat"><p className="dl-stat-label">3 · Fundo de ativos</p><div className="dl-stat-val" style={{ color: bloqueado ? "var(--muted)" : "var(--cobre)" }}>{brl(num(d.fundoAtivos))}</div><p className="dl-row-s">{bloqueado ? "travado" : "liberado"}</p></div>
+        <div className="dl-stat">
+          <p className="dl-stat-label">Percentuais</p>
+          <div className="dl-f" style={{ marginTop: 4, marginBottom: 0 }}>
+            {["reserva", "giro", "ativos"].map((k) => (
+              <input key={k} className="dl-in" inputMode="numeric" value={p[k]} style={{ padding: "5px 6px", textAlign: "center" }}
+                onChange={(e) => up({ potes: { ...p, [k]: +e.target.value || 0 } })} />
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="dl-form">
+        <div className="dl-f">
+          <input className="dl-in" inputMode="decimal" placeholder="Lucro do mês R$" value={lucro} onChange={(e) => setLucro(e.target.value)} />
+          <button className="dl-btn" onClick={distribuir}>Distribuir</button>
+        </div>
+      </div>
+
+      <h3 style={{ marginTop: 18, marginBottom: 8 }}>Marcos que você confirma na mão</h3>
+      {[["margens", "Já apurei a margem por tipo de obra dos últimos 12 meses"],
+        ["operacao60", "A operação rodou 60 dias seguidos sem mim no canteiro"],
+        ["lucro6", "Tive lucro em 6 meses seguidos"],
+        ["primeiroAtivo6", "Meu primeiro ativo se paga sozinho há 6 meses"]].map(([k, t]) => (
+        <label className="dl-chk" key={k}>
+          <input type="checkbox" checked={!!d.marcos[k]} onChange={(e) => up({ marcos: { ...d.marcos, [k]: e.target.checked } })} />
+          <span>{t}</span>
+        </label>
+      ))}
+      <div className="dl-form">
+        <p className="dl-stat-label" style={{ marginBottom: 6 }}>Ciclo de caixa: dias entre o primeiro gasto e o último recebimento</p>
+        <input className="dl-in" inputMode="numeric" placeholder="dias" value={d.marcos.ciclo} onChange={(e) => up({ marcos: { ...d.marcos, ciclo: e.target.value } })} />
+      </div>
+    </div>
+  );
+}
+
+/* =============================== ATIVOS =============================== */
+function Ativos({ d, up, c, abrir }) {
+  const [f, setF] = useState({ nome: "", investimento: "", retorno: "", status: "fila" });
+  const add = () => {
+    if (!f.nome.trim()) return;
+    up({ ativos: [...d.ativos, { id: uid(), ...f, aportes: [], movimentos: [], etapas: [], obs: "" }] });
+    setF({ nome: "", investimento: "", retorno: "", status: "fila" });
+  };
+  return (
+    <div className="dl-sec">
+      <h2>Fila de ativos</h2>
+      <p className="dl-note">Um por vez. O próximo só sai da fila quando o anterior estiver pagando as próprias contas há 6 meses.</p>
+      <div className="dl-form">
+        <div className="dl-f"><input className="dl-in" placeholder="Ativo" value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} /></div>
+        <div className="dl-f">
+          <input className="dl-in" inputMode="decimal" placeholder="Investimento previsto" value={f.investimento} onChange={(e) => setF({ ...f, investimento: e.target.value })} />
+          <input className="dl-in" inputMode="decimal" placeholder="Retorno/mês previsto" value={f.retorno} onChange={(e) => setF({ ...f, retorno: e.target.value })} />
+        </div>
+        <button className="dl-btn" onClick={add}>Adicionar à fila</button>
+      </div>
+      {d.ativos.length === 0 && <div className="dl-empty">Fila vazia. A usina no seu terreno é a primeira candidata: projeto e mão de obra por sua conta derrubam o investimento.</div>}
+      {d.ativos.map((a) => {
+        const k = c.ativoCalc[a.id];
+        return (
+          <div className="dl-row" key={a.id}>
+            <button className="dl-row-main dl-row-btn" style={{ border: "none", background: "none", padding: 0 }} onClick={() => abrir(a.id)}>
+              <div className="dl-row-t">{a.nome}</div>
+              <div className="dl-row-s">
+                aportado {brl(k.ap)} · {k.payback > 0 ? "paga em " + k.payback.toFixed(0) + " meses" : "sem retorno ainda"}
+              </div>
+            </button>
+            <span className={"dl-pill" + (a.status === "execucao" ? " dl-pill-live" : a.status === "operando" ? " dl-pill-ok" : "")}>
+              {a.status === "fila" ? "na fila" : a.status === "execucao" ? "em execução" : "operando"}
+            </span>
+            <button className="dl-x" onClick={() => abrir(a.id)}>›</button>
+          </div>
+        );
+      })}
+      <div className="dl-total"><span>Renda líquida dos ativos</span><b>{brl(c.rendaAtivos)}</b></div>
+    </div>
+  );
+}
+
+function AtivoDetalhe({ d, up, upItem, c, id, voltar }) {
+  const a = d.ativos.find((x) => x.id === id);
+  const [sub, setSub] = useState("resumo");
+  const [ap, setAp] = useState({ data: hoje(), desc: "", valor: "" });
+  const [mv, setMv] = useState({ data: hoje(), desc: "", valor: "", tipo: "e" });
+  const [et, setEt] = useState("");
+  if (!a) return <button className="dl-back" onClick={voltar}>‹ voltar</button>;
+  const k = c.ativoCalc[id];
+  const patch = (campo, arr) => upItem("ativos", id, { [campo]: arr });
+
+  return (
+    <div className="dl-sec">
+      <button className="dl-back" onClick={voltar}>‹ ativos</button>
+      <h2>{a.nome}</h2>
+      <div className="dl-sub2">
+        {[["resumo", "Resumo"], ["aportes", "Aportes"], ["operacao", "Operação"], ["etapas", "Etapas"]].map(([kk, r]) => (
+          <button key={kk} className={sub === kk ? "on" : ""} onClick={() => setSub(kk)}>{r}</button>
+        ))}
+      </div>
+
+      {sub === "resumo" && (
+        <>
+          <div className="dl-grid" style={{ marginTop: 0 }}>
+            <div className="dl-stat"><p className="dl-stat-label">Aportado</p><div className="dl-stat-val">{brl(k.ap)}</div></div>
+            <div className="dl-stat"><p className="dl-stat-label">Previsto</p><div className="dl-stat-val">{brl(num(a.investimento))}</div></div>
+            <div className="dl-stat"><p className="dl-stat-label">Receita acumulada</p><div className="dl-stat-val" style={{ color: "var(--terra)" }}>{brl(k.rec)}</div></div>
+            <div className="dl-stat"><p className="dl-stat-label">Despesa acumulada</p><div className="dl-stat-val" style={{ color: "var(--fase)" }}>{brl(k.des)}</div></div>
+            <div className="dl-stat"><p className="dl-stat-label">Líquido por mês</p><div className="dl-stat-val">{brl(k.liquidoMes)}</div></div>
+            <div className="dl-stat"><p className="dl-stat-label">Payback</p><div className="dl-stat-val">{k.payback > 0 ? k.payback.toFixed(0) + " meses" : "—"}</div></div>
+          </div>
+          <div className="dl-form" style={{ marginTop: 12 }}>
+            <div className="dl-f">
+              <select className="dl-in" value={a.status} onChange={(e) => upItem("ativos", id, { status: e.target.value })}>
+                <option value="fila">na fila</option><option value="execucao">em execução</option><option value="operando">operando</option>
+              </select>
+              <input className="dl-in" inputMode="decimal" value={a.investimento} placeholder="Investimento previsto" onChange={(e) => upItem("ativos", id, { investimento: e.target.value })} />
+            </div>
+            <textarea className="dl-in dl-ta" placeholder="Notas: fornecedor, terreno, homologação, prazo" value={a.obs || ""} onChange={(e) => upItem("ativos", id, { obs: e.target.value })} />
+          </div>
+        </>
+      )}
+
+      {sub === "aportes" && (
+        <>
+          <p className="dl-note">Quanto do seu dinheiro já entrou nesse ativo.</p>
+          <div className="dl-form">
+            <div className="dl-f">
+              <input className="dl-in" type="date" value={ap.data} onChange={(e) => setAp({ ...ap, data: e.target.value })} />
+              <input className="dl-in" inputMode="decimal" placeholder="R$" value={ap.valor} onChange={(e) => setAp({ ...ap, valor: e.target.value })} />
+            </div>
+            <div className="dl-f"><input className="dl-in" placeholder="Descrição" value={ap.desc} onChange={(e) => setAp({ ...ap, desc: e.target.value })} /></div>
+            <button className="dl-btn" onClick={() => { if (!num(ap.valor)) return; up({ lancamentos: [{ id: uid(), data: ap.data, desc: (ap.desc || "aporte") + " · " + a.nome, valor: ap.valor, tipo: "s", forma: "Pix", status: "pago", categoria: "ativo", ativoId: id, aporte: true }, ...d.lancamentos] }); setAp({ data: hoje(), desc: "", valor: "" }); }}>Lançar aporte</button>
+          </div>
+          {k.lanc.filter((l) => l.aporte).length === 0 && <div className="dl-empty">Nenhum aporte ainda.</div>}
+          {k.lanc.filter((l) => l.aporte).map((x) => (
+            <div className="dl-row" key={x.id}>
+              <div className="dl-row-main"><div className="dl-row-t">{x.desc}</div><div className="dl-row-s">{br(x.data)}</div></div>
+              <div className="dl-row-v">{brl(num(x.valor))}</div>
+              <button className="dl-x" onClick={() => up({ lancamentos: d.lancamentos.filter((y) => y.id !== x.id) })}>×</button>
+            </div>
+          ))}
+          <div className="dl-total"><span>Total aportado</span><b>{brl(k.ap)}</b></div>
+        </>
+      )}
+
+      {sub === "operacao" && (
+        <>
+          <div className="dl-form">
+            <div className="dl-f">
+              <select className="dl-in" style={{ maxWidth: 120 }} value={mv.tipo} onChange={(e) => setMv({ ...mv, tipo: e.target.value })}>
+                <option value="e">receita</option><option value="s">despesa</option>
+              </select>
+              <input className="dl-in" inputMode="decimal" placeholder="R$" value={mv.valor} onChange={(e) => setMv({ ...mv, valor: e.target.value })} />
+            </div>
+            <div className="dl-f">
+              <input className="dl-in" type="date" value={mv.data} onChange={(e) => setMv({ ...mv, data: e.target.value })} />
+              <input className="dl-in" placeholder="Descrição" value={mv.desc} onChange={(e) => setMv({ ...mv, desc: e.target.value })} />
+            </div>
+            <button className="dl-btn" onClick={() => { if (!num(mv.valor)) return; up({ lancamentos: [{ id: uid(), data: mv.data, desc: mv.desc || a.nome, valor: mv.valor, tipo: mv.tipo, forma: "Pix", status: "pago", categoria: "ativo", ativoId: id }, ...d.lancamentos] }); setMv({ data: hoje(), desc: "", valor: "", tipo: "e" }); }}>Lançar</button>
+          </div>
+          {k.lanc.filter((l) => !l.aporte).length === 0 && <div className="dl-empty">Sem movimento. Quando o ativo começar a gerar, lance aqui para o payback ficar real.</div>}
+          {k.lanc.filter((l) => !l.aporte).map((x) => (
+            <div className="dl-row" key={x.id}>
+              <div className="dl-row-main"><div className="dl-row-t">{x.desc}</div><div className="dl-row-s">{br(x.data)}</div></div>
+              <div className="dl-row-v" style={{ color: x.tipo === "e" ? "var(--terra)" : "var(--fase)" }}>{x.tipo === "e" ? "+" : "−"}{brl(num(x.valor))}</div>
+              <button className="dl-x" onClick={() => up({ lancamentos: d.lancamentos.filter((y) => y.id !== x.id) })}>×</button>
+            </div>
+          ))}
+          <div className="dl-total"><span>Líquido acumulado</span><b>{brl(k.rec - k.des)}</b></div>
+        </>
+      )}
+
+      {sub === "etapas" && (
+        <>
+          <div className="dl-form">
+            <div className="dl-f"><input className="dl-in" placeholder="Etapa (ex: homologação na concessionária)" value={et} onChange={(e) => setEt(e.target.value)} /></div>
+            <button className="dl-btn" onClick={() => { if (!et.trim()) return; patch("etapas", [...(a.etapas || []), { id: uid(), t: et.trim(), ok: false }]); setEt(""); }}>Adicionar etapa</button>
+          </div>
+          {(a.etapas || []).map((e) => (
+            <label className="dl-chk" key={e.id}>
+              <input type="checkbox" checked={!!e.ok} onChange={() => patch("etapas", (a.etapas || []).map((y) => (y.id === e.id ? { ...y, ok: !y.ok } : y)))} />
+              <span style={{ flex: 1 }}>{e.t}</span>
+              <button className="dl-x" onClick={() => patch("etapas", (a.etapas || []).filter((y) => y.id !== e.id))}>×</button>
+            </label>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ============================== CLIENTES ============================== */
+function Clientes({ d, up }) {
+  const [f, setF] = useState({ nome: "", contato: "", tipo: "industrial", origem: "" });
+  const add = () => {
+    if (!f.nome.trim()) return;
+    up({ clientes: [...d.clientes, { id: uid(), ...f }] });
+    setF({ nome: "", contato: "", tipo: "industrial", origem: "" });
+  };
+  const porOrigem = d.clientes.filter((x) => /indica/i.test(x.origem || "")).length;
+  return (
+    <div className="dl-sec">
+      <h2>Clientes</h2>
+      <p className="dl-note">
+        Anote de onde veio cada um. {d.clientes.length > 0 && porOrigem > 0
+          ? Math.round((porOrigem / d.clientes.length) * 100) + "% vieram de indicação — esse é o seu ativo local mais valioso."
+          : "Se a maioria vier de indicação, esse é o seu ativo mais valioso e ele é local."}
+      </p>
+      <div className="dl-form">
+        <div className="dl-f"><input className="dl-in" placeholder="Nome" value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} /></div>
+        <div className="dl-f">
+          <input className="dl-in" placeholder="Contato" value={f.contato} onChange={(e) => setF({ ...f, contato: e.target.value })} />
+          <select className="dl-in" style={{ maxWidth: 130 }} value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}>
+            <option value="industrial">industrial</option><option value="predial">predial</option>
+            <option value="comercial">comercial</option><option value="residencial">residencial</option>
+          </select>
+        </div>
+        <div className="dl-f"><input className="dl-in" placeholder="Como chegou até você" value={f.origem} onChange={(e) => setF({ ...f, origem: e.target.value })} /></div>
+        <button className="dl-btn" onClick={add}>Adicionar cliente</button>
+      </div>
+      {d.clientes.length === 0 && <div className="dl-empty">Nenhum cliente cadastrado ainda.</div>}
+      {d.clientes.map((x) => (
+        <div className="dl-row" key={x.id}>
+          <div className="dl-row-main">
+            <div className="dl-row-t">{x.nome}</div>
+            <div className="dl-row-s">{x.tipo}{x.contato ? " · " + x.contato : ""}{x.origem ? " · " + x.origem : ""}</div>
+          </div>
+          <button className="dl-x" onClick={() => up({ clientes: d.clientes.filter((y) => y.id !== x.id) })}>×</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* =============================== BACKUP =============================== */
+function Backup({ d, up }) {
+  const [json, setJson] = useState("");
+  const [imp, setImp] = useState("");
+  const [msg, setMsg] = useState("");
+  const [teste, setTeste] = useState("");
+  const [confirmar, setConfirmar] = useState(false);
+
+  const registros = d.custos.length + d.contratos.length + d.obras.length +
+    d.lancamentos.length + d.ativos.length + d.clientes.length + d.metas.length;
+
+  const gerar = () => {
+    const texto = JSON.stringify({ ...d, exportadoEm: hoje() }, null, 2);
+    setJson(texto);
+    up({ ultimoBackup: hoje() });
+    return texto;
+  };
+
+  const baixar = () => {
+    const texto = gerar();
+    try {
+      const blob = new Blob([texto], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "dialetica-backup-" + hoje() + ".json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+      setMsg("Arquivo gerado. Se o download não aparecer no celular, use o texto abaixo.");
+    } catch (e) {
+      setMsg("O navegador bloqueou o download. Copie o texto abaixo e guarde onde preferir.");
+    }
+  };
+
+  const copiar = async () => {
+    const texto = gerar();
+    try {
+      await navigator.clipboard.writeText(texto);
+      setMsg("Copiado. Cole num bloco de notas, no seu e-mail ou no Drive.");
+    } catch (e) {
+      setMsg("Não consegui copiar sozinho. Selecione o texto abaixo e copie na mão.");
+    }
+  };
+
+  const restaurar = () => {
+    try {
+      const obj = JSON.parse(imp);
+      if (!obj || typeof obj !== "object" || !Array.isArray(obj.custos)) throw new Error("formato");
+      up({ ...VAZIO, ...obj });
+      setImp("");
+      setConfirmar(false);
+      setMsg("Backup restaurado. Confira as abas para garantir que está tudo aí.");
+    } catch (e) {
+      setMsg("Esse texto não é um backup válido. Cole o conteúdo inteiro do arquivo, das chaves de abertura às de fechamento.");
+    }
+  };
+
+  const testar = async () => {
+    setTeste("testando…");
+    try {
+      const marca = String(Date.now());
+      const onde = await loja.set("dialetica:teste", marca);
+      const r = await loja.get("dialetica:teste");
+      setTeste(r === marca
+        ? "Salvamento funcionando, guardando no " + onde + ". Pode lançar seus dados."
+        : "O painel gravou mas não conseguiu ler de volta. Recarregue e teste de novo.");
+    } catch (e) {
+      setTeste("Salvamento indisponível aqui. Abra o painel pelo link publicado, não pela pré-visualização.");
+    }
+  };
+
+  return (
+    <div className="dl-sec">
+      <h2>Backup</h2>
+      <p className="dl-note">Seus dados ficam guardados na sua conta do Claude. Uma cópia sua, fora dele, é o que garante que nada se perca.</p>
+
+      <div className="dl-grid" style={{ marginTop: 0, marginBottom: 12 }}>
+        <div className="dl-stat">
+          <p className="dl-stat-label">Registros guardados</p>
+          <div className="dl-stat-val">{registros}</div>
+        </div>
+        <div className="dl-stat">
+          <p className="dl-stat-label">Último backup</p>
+          <div className="dl-stat-val" style={{ color: d.ultimoBackup ? undefined : "var(--fase)" }}>
+            {d.ultimoBackup ? br(d.ultimoBackup) : "nunca"}
+          </div>
+        </div>
+      </div>
+
+      <h3 style={{ marginBottom: 8 }}>Salvamento automático</h3>
+      <div className="dl-form">
+        <button className="dl-btn-2" onClick={testar}>Testar salvamento</button>
+        {teste && <p className="dl-row-s" style={{ marginTop: 9 }}>{teste}</p>}
+      </div>
+
+      <h3 style={{ marginBottom: 8 }}>Guardar uma cópia</h3>
+      <div className="dl-form">
+        <div className="dl-f">
+          <button className="dl-btn" onClick={baixar}>Baixar arquivo</button>
+          <button className="dl-btn-2" onClick={copiar}>Copiar texto</button>
+        </div>
+        {msg && <p className="dl-row-s" style={{ marginBottom: 8 }}>{msg}</p>}
+        {json && <textarea className="dl-in dl-ta" style={{ minHeight: 130, fontSize: 12 }} readOnly value={json} onFocus={(e) => e.target.select()} />}
+      </div>
+
+      <h3 style={{ marginBottom: 8 }}>Restaurar de um backup</h3>
+      <div className="dl-info">
+        Restaurar apaga o que está no painel agora e coloca o conteúdo do backup no lugar. Só use se perdeu dados ou está começando num painel novo.
+      </div>
+      <div className="dl-form">
+        <textarea className="dl-in dl-ta" placeholder="Cole aqui o conteúdo do arquivo de backup" value={imp} onChange={(e) => { setImp(e.target.value); setConfirmar(false); }} />
+        {!confirmar
+          ? <button className="dl-btn-2" onClick={() => imp.trim() && setConfirmar(true)}>Restaurar</button>
+          : <div className="dl-f" style={{ marginTop: 4, marginBottom: 0 }}>
+              <button className="dl-btn" onClick={restaurar}>Confirmar e substituir tudo</button>
+              <button className="dl-btn-2" onClick={() => setConfirmar(false)}>Cancelar</button>
+            </div>}
+      </div>
+
+      <div className="dl-info" style={{ marginTop: 14 }}>
+        <h3>Rotina sugerida</h3>
+        <p>Todo dia 1º, quando você for lançar o lucro do mês na aba Metas, faça o backup logo em seguida. São dois toques e resolve.</p>
+      </div>
+    </div>
+  );
+}
+
+/* ================================ VIDA ================================ */
+function Vida({ d, up, c }) {
+  const [sub, setSub] = useState("custo");
+  const [f, setF] = useState({ nome: "", valor: "", tipo: "imovel" });
+
+  const listaDe = { custo: "custoVida", renda: "rendas", patrimonio: "patrimonio" }[sub];
+  const add = () => {
+    if (!f.nome.trim()) return;
+    up({ [listaDe]: [...d[listaDe], { id: uid(), nome: f.nome.trim(), valor: f.valor, tipo: f.tipo }] });
+    setF({ nome: "", valor: "", tipo: "imovel" });
+  };
+  const edit = (id, v) => up({ [listaDe]: d[listaDe].map((x) => (x.id === id ? { ...x, valor: v } : x)) });
+  const del = (id) => up({ [listaDe]: d[listaDe].filter((x) => x.id !== id) });
+
+  const faltam = Math.max(0, c.custoVida - c.rendaPassiva);
+
+  return (
+    <div className="dl-sec">
+      <h2>Vida</h2>
+      <p className="dl-note">
+        A empresa é a máquina. Aqui é o que ela está construindo. O número que importa é quanto da sua vida já se paga sem você trabalhar.
+      </p>
+
+      <div className="dl-grid" style={{ marginTop: 0, marginBottom: 12 }}>
+        <div className="dl-stat">
+          <p className="dl-stat-label">Independência</p>
+          <div className="dl-stat-val" style={{ color: c.independencia >= 100 ? "var(--terra)" : "var(--neutro)" }}>{Math.round(c.independencia)}%</div>
+        </div>
+        <div className="dl-stat">
+          <p className="dl-stat-label">Falta de renda passiva</p>
+          <div className="dl-stat-val">{brl(faltam)}</div>
+        </div>
+        <div className="dl-stat">
+          <p className="dl-stat-label">Renda dos ativos</p>
+          <div className="dl-stat-val">{brl(c.rendaPassiva)}</div>
+        </div>
+        <div className="dl-stat">
+          <p className="dl-stat-label">Patrimônio</p>
+          <div className="dl-stat-val">{brl(c.patrimonio)}</div>
+        </div>
+      </div>
+
+      <div className="dl-sub2">
+        {[["custo", "Custo de vida"], ["renda", "Outras rendas"], ["patrimonio", "Patrimônio"]].map(([k, r]) => (
+          <button key={k} className={sub === k ? "on" : ""} onClick={() => setSub(k)}>{r}</button>
+        ))}
+      </div>
+
+      {sub === "custo" && (
+        <p className="dl-note">O que a sua vida custa por mês, fora da empresa: moradia, comida, escola, saúde, transporte, lazer. É a meta que a renda passiva precisa alcançar.</p>
+      )}
+      {sub === "renda" && (
+        <p className="dl-note">Renda que não vem do seu trabalho nem da empresa: aluguel, aplicação, sociedade. A renda dos ativos já entra sozinha, não repita aqui.</p>
+      )}
+      {sub === "patrimonio" && (
+        <p className="dl-note">O que você tem hoje. A reserva e o fundo de ativos já somam sozinhos, cadastre só o resto.</p>
+      )}
+
+      <div className="dl-form">
+        <div className="dl-f">
+          <input className="dl-in" placeholder={sub === "custo" ? "Item" : sub === "renda" ? "Fonte" : "Bem"} value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} />
+          <input className="dl-in" style={{ maxWidth: 118 }} inputMode="decimal" placeholder="R$" value={f.valor} onChange={(e) => setF({ ...f, valor: e.target.value })} />
+        </div>
+        {sub === "patrimonio" && (
+          <div className="dl-f">
+            <select className="dl-in" value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}>
+              <option value="imovel">imóvel</option>
+              <option value="terreno">terreno</option>
+              <option value="veiculo">veículo</option>
+              <option value="equipamento">equipamento</option>
+              <option value="aplicacao">aplicação</option>
+              <option value="outro">outro</option>
+            </select>
+          </div>
+        )}
+        <button className="dl-btn" onClick={add}>Adicionar</button>
+      </div>
+
+      {d[listaDe].length === 0 && (
+        <div className="dl-empty">
+          {sub === "custo" ? "Comece pela moradia e pela alimentação." : sub === "renda" ? "Nenhuma renda fora do seu trabalho ainda. É exatamente isso que o plano quer mudar." : "Cadastre o terreno da usina, o veículo e o que mais for seu."}
+        </div>
+      )}
+      {d[listaDe].map((x) => (
+        <div className="dl-row" key={x.id}>
+          <div className="dl-row-main">
+            <div className="dl-row-t">{x.nome}</div>
+            {sub === "patrimonio" && <div className="dl-row-s">{x.tipo}</div>}
+          </div>
+          <input className="dl-in" style={{ maxWidth: 112, textAlign: "right" }} inputMode="decimal" value={x.valor} placeholder="R$" onChange={(e) => edit(x.id, e.target.value)} />
+          <button className="dl-x" onClick={() => del(x.id)}>×</button>
+        </div>
+      ))}
+      <div className="dl-total">
+        <span>{sub === "custo" ? "Custo de vida mensal" : sub === "renda" ? "Outras rendas" : "Bens cadastrados"}</span>
+        <b>{brl(d[listaDe].reduce((s2, x) => s2 + num(x.valor), 0))}</b>
+      </div>
+
+      {c.custoVida > 0 && c.rendaPassiva < c.custoVida && (
+        <div className="dl-info" style={{ marginTop: 16 }}>
+          <h3>O alvo</h3>
+          <p>
+            Para sua vida se pagar sozinha faltam {brl(faltam)} de renda passiva por mês.
+            {c.reservaMeses < 6
+              ? " O caminho ainda passa por encher a reserva antes de comprar o primeiro ativo."
+              : " Você já pode dimensionar o próximo ativo por esse número, em vez de chutar o porte."}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================== FECHAR O MÊS =========================== */
+function CaixaFechar({ d, up, c }) {
+  const ym = ymHoje();
+  const feito = d.fechamentos[ym] || {};
+  const doMes = d.lancamentos.filter((l) => ((l.status === "previsto" ? l.vencimento : l.data) || "").slice(0, 7) === ym);
+  const ent = doMes.filter((l) => l.tipo === "e" && l.status !== "previsto").reduce((s, l) => s + num(l.valor), 0);
+  const sai = doMes.filter((l) => l.tipo === "s" && l.status !== "previsto").reduce((s, l) => s + num(l.valor), 0);
+  const resultado = ent - sai;
+  const marcar = (k) => up({ fechamentos: { ...d.fechamentos, [ym]: { ...feito, [k]: true } } });
+
+  const lancarFixos = () => {
+    const novos = d.custos.filter((x) => x.tipo !== "variavel" && num(x.valor) > 0).map((x) => ({
+      id: uid(), data: ym + "-01", vencimento: ym + "-10", desc: x.nome, valor: x.valor,
+      tipo: "s", forma: "Pix", status: "previsto", categoria: "fixo" }));
+    if (!novos.length) return;
+    up({ lancamentos: [...novos, ...d.lancamentos], fechamentos: { ...d.fechamentos, [ym]: { ...feito, fixos: true } } });
+  };
+
+  const faturarContratos = () => {
+    const ativos = d.contratos.filter((x) => x.ativo !== false && num(x.valor) > 0);
+    const novos = ativos.map((x) => ({
+      id: uid(), data: ym + "-01", vencimento: ym + "-10", desc: "Manutenção · " + x.cliente, valor: x.valor,
+      tipo: "e", forma: "Pix", status: "previsto", categoria: "manutencao", contratoId: x.id }));
+    if (!novos.length) return;
+    up({ lancamentos: [...novos, ...d.lancamentos], fechamentos: { ...d.fechamentos, [ym]: { ...feito, contratos: true } } });
+  };
+
+  const distribuir = () => {
+    if (resultado <= 0) return;
+    const p = d.potes, bloqueado = c.reservaMeses < 6;
+    up({
+      reserva: String(num(d.reserva) + resultado * ((bloqueado ? p.reserva + p.ativos : p.reserva) / 100)),
+      giro: String(num(d.giro) + resultado * (p.giro / 100)),
+      fundoAtivos: String(num(d.fundoAtivos) + (bloqueado ? 0 : resultado * (p.ativos / 100))),
+      fechamentos: { ...d.fechamentos, [ym]: { ...feito, lucro: true } },
+    });
+  };
+
+  return (
+    <>
+      <p className="dl-note">Três toques por mês e o painel inteiro fica em dia. Faça no começo do mês.</p>
+
+      <div className="dl-grid" style={{ marginTop: 0, marginBottom: 14 }}>
+        <div className="dl-stat"><p className="dl-stat-label">Entrou em {mesLabel(ym)}</p><div className="dl-stat-val" style={{ color: "var(--terra)" }}>{brl(ent)}</div></div>
+        <div className="dl-stat"><p className="dl-stat-label">Saiu em {mesLabel(ym)}</p><div className="dl-stat-val" style={{ color: "var(--fase)" }}>{brl(sai)}</div></div>
+      </div>
+
+      <div className="dl-row" style={{ display: "block" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div className="dl-row-main">
+            <div className="dl-row-t">1 · Lançar as contas fixas</div>
+            <div className="dl-row-s">Gera uma conta a pagar para cada item do custo fixo, vencendo dia 10.</div>
+          </div>
+          {feito.fixos ? <span className="dl-pill dl-pill-ok">feito</span>
+            : <button className="dl-btn" onClick={lancarFixos}>Lançar</button>}
+        </div>
+      </div>
+
+      <div className="dl-row" style={{ display: "block" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div className="dl-row-main">
+            <div className="dl-row-t">2 · Faturar os contratos</div>
+            <div className="dl-row-s">Gera uma cobrança para cada contrato de manutenção ativo.</div>
+          </div>
+          {feito.contratos ? <span className="dl-pill dl-pill-ok">feito</span>
+            : <button className="dl-btn" onClick={faturarContratos}>Faturar</button>}
+        </div>
+      </div>
+
+      <div className="dl-row" style={{ display: "block" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div className="dl-row-main">
+            <div className="dl-row-t">3 · Apurar o lucro</div>
+            <div className="dl-row-s">
+              {resultado > 0 ? "Resultado de " + brl(resultado) + ", dividido nos três potes." : "O mês ainda não fechou positivo."}
+            </div>
+          </div>
+          {feito.lucro ? <span className="dl-pill dl-pill-ok">feito</span>
+            : <button className="dl-btn" disabled={resultado <= 0} style={{ opacity: resultado > 0 ? 1 : .4 }} onClick={distribuir}>Distribuir</button>}
+        </div>
+      </div>
+
+      <div className="dl-info" style={{ marginTop: 14 }}>
+        <h3>Depois disso</h3>
+        <p>As contas a pagar e as cobranças ficam na aba “A receber e a pagar”. Conforme o dinheiro entra e sai de verdade, você dá baixa no ✓ e o caixa se ajusta sozinho.</p>
+      </div>
+    </>
+  );
+}
+
+
+ReactDOM.createRoot(document.getElementById("raiz")).render(<PainelDialetica />);
+</script>
+</body>
+</html>
