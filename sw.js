@@ -1,7 +1,7 @@
 // Service worker: guarda os arquivos do painel para abrir sem internet.
 // Sempre que possível busca a versão mais nova na rede; se não houver
 // internet, usa a cópia guardada. Não mexe no localStorage (dados do painel).
-const CACHE = "dialetica-v2";
+const CACHE = "dialetica-v3";
 const ASSETS = [
   "./",
   "./index.html",

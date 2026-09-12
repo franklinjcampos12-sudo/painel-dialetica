@@ -356,6 +356,7 @@ function PainelDialetica() {
     });
     const margemObras = d.obras.reduce((s, o) => s + obraCalc[o.id].margem, 0);
     const obraAReceber = d.obras.filter(o => o.status !== "fechada").reduce((s, o) => s + obraCalc[o.id].aReceber, 0);
+    const obraNaoMedido = d.obras.filter(o => o.status !== "fechada").reduce((s, o) => s + obraCalc[o.id].naoMedido, 0);
     const ativoCalc = {};
     d.ativos.forEach(a => {
       const lanc = d.lancamentos.filter(l => l.ativoId === a.id);
@@ -400,6 +401,7 @@ function PainelDialetica() {
       obraCalc,
       margemObras,
       obraAReceber,
+      obraNaoMedido,
       ativoCalc,
       emExecucao,
       operando: operando.length,
@@ -413,8 +415,6 @@ function PainelDialetica() {
     if (m.fonte === "ativos") return c.rendaAtivos;
     return num(m.atual);
   };
-  const metasAbertas = d.metas.filter(m => valorMeta(m) < num(m.alvo));
-  const proximaMeta = metasAbertas.slice().sort((a, b) => num(a.alvo) - valorMeta(a) - (num(b.alvo) - valorMeta(b)))[0];
   const fases = useMemo(() => {
     const f = [{
       n: "Fase 0",
@@ -528,10 +528,10 @@ function PainelDialetica() {
     voltar: voltar
   });else if (aba === "painel") conteudo = React.createElement(Painel, {
     d: d,
+    up: up,
     c: c,
     fases: fases,
     travas: travas,
-    proximaMeta: proximaMeta,
     valorMeta: valorMeta
   });else if (aba === "custos") conteudo = React.createElement(Custos, {
     d: d,
@@ -593,13 +593,14 @@ function PainelDialetica() {
 }
 function Painel({
   d,
+  up,
   c,
   fases,
   travas,
-  proximaMeta,
   valorMeta
 }) {
   const [aberta, setAberta] = useState(null);
+  const [metaAberta, setMetaAberta] = useState(null);
   const cor = c.cobertura >= 100 ? "var(--terra)" : c.cobertura >= 60 ? "var(--cobre)" : "var(--fase)";
   return React.createElement(React.Fragment, null, React.createElement("div", {
     className: "dl-meter"
@@ -662,21 +663,91 @@ function Painel({
     }
   })), React.createElement("div", {
     className: "dl-legend"
-  }, React.createElement("span", null, "renda passiva ", brl(c.rendaPassiva)), React.createElement("span", null, "custo de vida ", brl(c.custoVida)))), proximaMeta && React.createElement("div", {
+  }, React.createElement("span", null, "renda passiva ", brl(c.rendaPassiva)), React.createElement("span", null, "custo de vida ", brl(c.custoVida)))), d.metas.length > 0 && React.createElement("div", {
     className: "dl-info",
     style: {
       marginTop: 10,
       marginBottom: 0
     }
-  }, React.createElement("h3", null, "Pr\xF3ximo objetivo: ", proximaMeta.nome), React.createElement("p", {
-    className: "dl-row-s"
-  }, "Faltam ", brl(num(proximaMeta.alvo) - valorMeta(proximaMeta)), " de ", brl(num(proximaMeta.alvo)), proximaMeta.prazo ? " · até " + br(proximaMeta.prazo) : ""), React.createElement("div", {
-    className: "dl-prog"
-  }, React.createElement("i", {
-    style: {
-      width: Math.min(100, valorMeta(proximaMeta) / (num(proximaMeta.alvo) || 1) * 100) + "%"
-    }
-  }))), React.createElement("div", {
+  }, React.createElement("h3", null, "Metas"), d.metas.map(m => {
+    const at = valorMeta(m);
+    const alvo = num(m.alvo);
+    const pct = alvo > 0 ? Math.min(100, at / alvo * 100) : 0;
+    const pronta = at >= alvo && alvo > 0;
+    const subs = m.submetas || [];
+    const abertaM = metaAberta === m.id;
+    return React.createElement("div", {
+      key: m.id,
+      style: {
+        marginTop: 10
+      }
+    }, React.createElement("div", {
+      className: "dl-row",
+      style: {
+        display: "block",
+        marginBottom: 0,
+        borderColor: pronta ? "var(--terra)" : undefined
+      }
+    }, React.createElement("button", {
+      className: "dl-row-main dl-row-btn",
+      style: {
+        border: "none",
+        background: "none",
+        padding: 0,
+        width: "100%",
+        textAlign: "left"
+      },
+      onClick: () => setMetaAberta(abertaM ? null : m.id)
+    }, React.createElement("div", {
+      className: "dl-row-t"
+    }, m.nome), React.createElement("div", {
+      className: "dl-row-s"
+    }, pronta ? "alcançada" : "faltam " + brl(alvo - at), " \xB7 ", brl(at), " de ", brl(alvo), m.prazo ? " · até " + br(m.prazo) : "")), React.createElement("div", {
+      className: "dl-prog",
+      style: {
+        marginTop: 6
+      }
+    }, React.createElement("i", {
+      style: {
+        width: pct + "%",
+        background: pronta ? "var(--terra)" : "var(--cobre)"
+      }
+    }))), abertaM && React.createElement("div", {
+      className: "dl-cond"
+    }, subs.length === 0 && React.createElement("p", {
+      className: "dl-row-s",
+      style: {
+        marginTop: 6
+      }
+    }, "Sem passos definidos ainda. Adicione na aba Metas."), subs.map(s => React.createElement("label", {
+      className: "dl-cond-row",
+      key: s.id,
+      style: {
+        cursor: "pointer"
+      }
+    }, React.createElement("input", {
+      type: "checkbox",
+      checked: !!s.ok,
+      style: {
+        marginTop: 4
+      },
+      onChange: () => up({
+        metas: d.metas.map(y => y.id === m.id ? {
+          ...y,
+          submetas: subs.map(z => z.id === s.id ? {
+            ...z,
+            ok: !z.ok
+          } : z)
+        } : y)
+      })
+    }), React.createElement("span", {
+      style: {
+        flex: 1,
+        textDecoration: s.ok ? "line-through" : "none",
+        color: s.ok ? "var(--muted)" : undefined
+      }
+    }, s.t)))));
+  })), React.createElement("div", {
     className: "dl-grid"
   }, React.createElement("div", {
     className: "dl-stat"
@@ -706,6 +777,21 @@ function Painel({
   }, "A pagar"), React.createElement("div", {
     className: "dl-stat-val"
   }, brl(c.aPagar))), React.createElement("div", {
+    className: "dl-stat"
+  }, React.createElement("p", {
+    className: "dl-stat-label"
+  }, "Medido, aguardando receber"), React.createElement("div", {
+    className: "dl-stat-val",
+    style: {
+      color: "var(--cobre)"
+    }
+  }, brl(c.obraAReceber))), React.createElement("div", {
+    className: "dl-stat"
+  }, React.createElement("p", {
+    className: "dl-stat-label"
+  }, "Ainda não medido"), React.createElement("div", {
+    className: "dl-stat-val"
+  }, brl(c.obraNaoMedido))), React.createElement("div", {
     className: "dl-stat"
   }, React.createElement("p", {
     className: "dl-stat-label"
@@ -1264,7 +1350,51 @@ function Obras({
   })), React.createElement("button", {
     className: "dl-btn",
     onClick: add
-  }, "Criar obra")), d.obras.length === 0 && React.createElement("div", {
+  }, "Criar obra")), d.obras.length > 0 && (() => {
+    const ativas = d.obras.filter(o => o.status !== "fechada");
+    const contratado = ativas.reduce((s, o) => s + num(o.contrato), 0);
+    const recebido = ativas.reduce((s, o) => s + c.obraCalc[o.id].receb, 0);
+    return React.createElement("div", {
+      className: "dl-grid",
+      style: {
+        marginTop: 4,
+        marginBottom: 12
+      }
+    }, React.createElement("div", {
+      className: "dl-stat"
+    }, React.createElement("p", {
+      className: "dl-stat-label"
+    }, "Contratado"), React.createElement("div", {
+      className: "dl-stat-val"
+    }, brl(contratado))), React.createElement("div", {
+      className: "dl-stat"
+    }, React.createElement("p", {
+      className: "dl-stat-label"
+    }, "Recebido"), React.createElement("div", {
+      className: "dl-stat-val"
+    }, brl(recebido))), React.createElement("div", {
+      className: "dl-stat"
+    }, React.createElement("p", {
+      className: "dl-stat-label"
+    }, "Medido, a receber"), React.createElement("div", {
+      className: "dl-stat-val",
+      style: {
+        color: "var(--cobre)"
+      }
+    }, brl(c.obraAReceber))), React.createElement("div", {
+      className: "dl-stat"
+    }, React.createElement("p", {
+      className: "dl-stat-label"
+    }, "Ainda n\xE3o medido"), React.createElement("div", {
+      className: "dl-stat-val"
+    }, brl(c.obraNaoMedido))), React.createElement("div", {
+      className: "dl-stat"
+    }, React.createElement("p", {
+      className: "dl-stat-label"
+    }, "Margem acumulada"), React.createElement("div", {
+      className: "dl-stat-val"
+    }, brl(c.margemObras))));
+  })(), d.obras.length === 0 && React.createElement("div", {
     className: "dl-empty"
   }, "Nenhuma obra cadastrada."), d.obras.map(o => {
     const k = c.obraCalc[o.id];
@@ -1283,7 +1413,7 @@ function Obras({
       className: "dl-row-t"
     }, o.nome || o.cliente), React.createElement("div", {
       className: "dl-row-s"
-    }, o.cliente && o.nome ? o.cliente + " · " : "", "margem ", brl(k.margem), " \xB7 a receber ", brl(k.aReceber)), React.createElement("div", {
+    }, o.cliente && o.nome ? o.cliente + " · " : "", "margem ", brl(k.margem), " \xB7 a receber ", brl(k.aReceber), " \xB7 n\xE3o medido ", brl(k.naoMedido)), React.createElement("div", {
       className: "dl-prog",
       style: {
         marginTop: 6
@@ -1296,9 +1426,7 @@ function Obras({
       className: "dl-x",
       onClick: () => abrir(o.id)
     }, "\u203A"));
-  }), React.createElement("div", {
-    className: "dl-total"
-  }, React.createElement("span", null, "Margem acumulada"), React.createElement("b", null, brl(c.margemObras))));
+  }));
 }
 function ObraDetalhe({
   d,
@@ -2036,6 +2164,36 @@ function CaixaReceber({
       data: hoje()
     } : y)
   });
+  const pendentes = [];
+  d.obras.forEach(o => {
+    (o.medicoes || []).forEach(m => {
+      if (!m.recebida) pendentes.push({
+        obra: o,
+        medicao: m
+      });
+    });
+  });
+  pendentes.sort((a, b) => (a.medicao.data || "9999").localeCompare(b.medicao.data || "9999"));
+  const marcarRecebida = (obra, m) => up({
+    obras: d.obras.map(x => x.id === obra.id ? {
+      ...x,
+      medicoes: (x.medicoes || []).map(y => y.id === m.id ? {
+        ...y,
+        recebida: true
+      } : y)
+    } : x),
+    lancamentos: [{
+      id: uid(),
+      data: hoje(),
+      desc: (obra.nome || obra.cliente) + " · " + (m.descricao || "medição"),
+      valor: m.valor,
+      tipo: "e",
+      forma: "Pix",
+      status: "pago",
+      categoria: "obra",
+      obraId: obra.id
+    }, ...d.lancamentos]
+  });
   return React.createElement(React.Fragment, null, React.createElement("div", {
     className: "dl-grid",
     style: {
@@ -2060,13 +2218,32 @@ function CaixaReceber({
     style: {
       color: "var(--fase)"
     }
-  }, brl(c.aPagar)))), c.atrasados.length > 0 && React.createElement("div", {
+  }, brl(c.aPagar))), React.createElement("div", {
+    className: "dl-stat"
+  }, React.createElement("p", {
+    className: "dl-stat-label"
+  }, "Medido, aguardando obras"), React.createElement("div", {
+    className: "dl-stat-val",
+    style: {
+      color: "var(--cobre)"
+    }
+  }, brl(c.obraAReceber))), React.createElement("div", {
+    className: "dl-stat"
+  }, React.createElement("p", {
+    className: "dl-stat-label"
+  }, "Ainda n\xE3o medido"), React.createElement("div", {
+    className: "dl-stat-val"
+  }, brl(c.obraNaoMedido)))), c.atrasados.length > 0 && React.createElement("div", {
     className: "dl-alert"
   }, React.createElement("h3", null, "Cobrar hoje"), c.atrasados.map(l => React.createElement("p", {
     key: l.id
-  }, l.desc, " \xB7 ", brl(num(l.valor)), " \xB7 venceu ", br(l.vencimento), " (", dias(l.vencimento, hoje()), " dias)"))), prev.length === 0 && React.createElement("div", {
+  }, l.desc, " \xB7 ", brl(num(l.valor)), " \xB7 venceu ", br(l.vencimento), " (", dias(l.vencimento, hoje()), " dias)"))), React.createElement("h3", {
+    style: {
+      marginBottom: 8
+    }
+  }, "Previsto no caixa"), prev.length === 0 && React.createElement("div", {
     className: "dl-empty"
-  }, "Nada previsto. Lance na aba Conta escolhendo \u201Cainda vai cair\u201D."), prev.map(l => {
+  }, "Nada previsto. Lance na aba Conta escolhendo \"ainda vai cair\"."), prev.map(l => {
     const atras = l.vencimento && l.vencimento < hoje();
     const faltam = l.vencimento ? dias(hoje(), l.vencimento) : null;
     return React.createElement("div", {
@@ -2093,7 +2270,35 @@ function CaixaReceber({
         lancamentos: d.lancamentos.filter(y => y.id !== l.id)
       })
     }, "\xD7"));
-  }));
+  }), React.createElement("h3", {
+    style: {
+      marginTop: 16,
+      marginBottom: 8
+    }
+  }, "Medi\xE7\xF5es das obras aguardando receber"), pendentes.length === 0 && React.createElement("div", {
+    className: "dl-empty"
+  }, "Nenhuma medi\xE7\xE3o pendente."), pendentes.map(({
+    obra,
+    medicao: m
+  }) => React.createElement("div", {
+    className: "dl-row",
+    key: m.id
+  }, React.createElement("div", {
+    className: "dl-row-main"
+  }, React.createElement("div", {
+    className: "dl-row-t"
+  }, obra.nome || obra.cliente), React.createElement("div", {
+    className: "dl-row-s"
+  }, m.descricao || "medição", " \xB7 lan\xE7ada ", br(m.data))), React.createElement("div", {
+    className: "dl-row-v",
+    style: {
+      color: "var(--cobre)"
+    }
+  }, brl(num(m.valor))), React.createElement("button", {
+    className: "dl-x",
+    title: "marcar recebida",
+    onClick: () => marcarRecebida(obra, m)
+  }, "\u2713"))));
 }
 function CaixaFluxo({
   d,
