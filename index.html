@@ -3609,5 +3609,10 @@ function CaixaFechar({
 }
 ReactDOM.createRoot(document.getElementById("raiz")).render(React.createElement(PainelDialetica, null));
 </script>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+}
+</script>
 </body>
 </html>
