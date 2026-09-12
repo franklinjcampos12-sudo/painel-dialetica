@@ -44,11 +44,11 @@ A aba Backup exporta e importa o JSON inteiro. Mantenha ela funcionando em qualq
   contratos:   [{ id, cliente, valor, meses, inicio, ativo, escopo,
                   visitas: [{ id, data, servico, obs, feita }] }],
   obras:       [{ id, cliente, nome, contrato, custoPrevisto, inicio, prazo, status, obs,
-                  medicoes: [{ id, data, descricao, valor, recebida }],
+                  medicoes: [{ id, data, descricao, valor, recebida, vencimento }],
                   etapas:   [{ id, t, ok }],
                   equipe:   [{ id, nome, funcao, diaria }] }],
   lancamentos: [{ id, data, desc, valor, tipo: "e"|"s", forma, status: "pago"|"previsto",
-                  vencimento, categoria, obraId, ativoId, contratoId, aporte }],
+                  vencimento, categoria, obraId, ativoId, contratoId, aporte, medicaoId }],
   ativos:      [{ id, nome, investimento, retorno, status: "fila"|"execucao"|"operando",
                   etapas, obs }],
   clientes:    [{ id, nome, contato, tipo, origem }],
@@ -65,6 +65,8 @@ A aba Backup exporta e importa o JSON inteiro. Mantenha ela funcionando em qualq
 ```
 
 **`lancamentos` é a única fonte de verdade sobre dinheiro.** Obra, ativo e caixa filtram esse array por `obraId` / `ativoId`. Nunca volte a guardar valores financeiros dentro de obra ou de ativo: foi exatamente o bug que tornou o painel inconsistente.
+
+**Toda medição gera, na hora em que é lançada, um `lancamento` espelho com `status: "previsto"` e `medicaoId` apontando pra ela** (setembro/2026). É assim que uma medição pendente aparece em "a receber" no Caixa e no Painel, com data prevista. Ao marcar a medição como recebida, é esse MESMO lançamento que muda para `status: "pago"` — nunca crie um lançamento novo nesse momento, senão duplica dinheiro. Excluir uma medição também deve excluir o lançamento vinculado (por `medicaoId`), senão sobra um "a receber" fantasma. Dados de antes dessa mudança (sem `medicaoId`) foram migrados uma vez em `migrar()` (`versao` 2 → 3): toda medição pendente sem vínculo ganhou seu lançamento previsto retroativamente.
 
 ## Regras de negócio (o coração do produto)
 

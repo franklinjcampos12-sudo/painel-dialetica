@@ -211,65 +211,96 @@ const VAZIO = {
   patrimonio: [],
   fechamentos: {},
   ultimoBackup: "",
-  versao: 2
+  versao: 3
 };
 function migrar(s) {
-  if (s.versao === 2) return s;
-  const extras = [];
-  const obras = (s.obras || []).map(o => {
-    (o.gastos || []).forEach(g => extras.push({
-      id: uid(),
-      data: g.data,
-      desc: g.descricao || g.cat,
-      valor: g.valor,
-      tipo: "s",
-      forma: "Pix",
-      status: "pago",
-      categoria: g.cat === "maodeobra" ? "maodeobra" : g.cat === "material" ? "material" : "outra",
-      obraId: o.id
-    }));
-    return {
-      ...o,
-      gastos: []
+  let out = s;
+  if (out.versao !== 2 && out.versao !== 3) {
+    const extras = [];
+    const obras = (out.obras || []).map(o => {
+      (o.gastos || []).forEach(g => extras.push({
+        id: uid(),
+        data: g.data,
+        desc: g.descricao || g.cat,
+        valor: g.valor,
+        tipo: "s",
+        forma: "Pix",
+        status: "pago",
+        categoria: g.cat === "maodeobra" ? "maodeobra" : g.cat === "material" ? "material" : "outra",
+        obraId: o.id
+      }));
+      return {
+        ...o,
+        gastos: []
+      };
+    });
+    const ativos = (out.ativos || []).map(a => {
+      (a.aportes || []).forEach(x => extras.push({
+        id: uid(),
+        data: x.data,
+        desc: (x.desc || "aporte") + " · " + a.nome,
+        valor: x.valor,
+        tipo: "s",
+        forma: "Pix",
+        status: "pago",
+        categoria: "ativo",
+        ativoId: a.id,
+        aporte: true
+      }));
+      (a.movimentos || []).forEach(x => extras.push({
+        id: uid(),
+        data: x.data,
+        desc: x.desc || a.nome,
+        valor: x.valor,
+        tipo: x.tipo,
+        forma: "Pix",
+        status: "pago",
+        categoria: "ativo",
+        ativoId: a.id
+      }));
+      return {
+        ...a,
+        aportes: [],
+        movimentos: []
+      };
+    });
+    out = {
+      ...out,
+      obras,
+      ativos,
+      lancamentos: [...extras, ...(out.lancamentos || [])],
+      versao: 2
     };
-  });
-  const ativos = (s.ativos || []).map(a => {
-    (a.aportes || []).forEach(x => extras.push({
-      id: uid(),
-      data: x.data,
-      desc: (x.desc || "aporte") + " · " + a.nome,
-      valor: x.valor,
-      tipo: "s",
-      forma: "Pix",
-      status: "pago",
-      categoria: "ativo",
-      ativoId: a.id,
-      aporte: true
-    }));
-    (a.movimentos || []).forEach(x => extras.push({
-      id: uid(),
-      data: x.data,
-      desc: x.desc || a.nome,
-      valor: x.valor,
-      tipo: x.tipo,
-      forma: "Pix",
-      status: "pago",
-      categoria: "ativo",
-      ativoId: a.id
-    }));
-    return {
-      ...a,
-      aportes: [],
-      movimentos: []
+  }
+  if (out.versao === 2) {
+    const jaVinculadas = new Set((out.lancamentos || []).filter(l => l.medicaoId).map(l => l.medicaoId));
+    const novosPrevistos = [];
+    (out.obras || []).forEach(o => {
+      (o.medicoes || []).forEach(m => {
+        if (!m.recebida && !jaVinculadas.has(m.id)) {
+          novosPrevistos.push({
+            id: uid(),
+            data: m.data || hoje(),
+            vencimento: m.vencimento || "",
+            desc: (o.nome || o.cliente) + " · " + (m.descricao || "medição"),
+            valor: m.valor,
+            tipo: "e",
+            forma: "Pix",
+            status: "previsto",
+            categoria: "obra",
+            obraId: o.id,
+            medicaoId: m.id
+          });
+        }
+      });
+    });
+    out = {
+      ...out,
+      lancamentos: [...novosPrevistos, ...(out.lancamentos || [])],
+      versao: 3
     };
-  });
-  return {
-    ...s,
-    obras,
-    ativos,
-    lancamentos: [...extras, ...(s.lancamentos || [])],
-    versao: 2
-  };
+  }
+  return out;
 }
 function PainelDialetica() {
   const [d, setD] = useState(VAZIO);
@@ -1441,7 +1472,8 @@ function ObraDetalhe({
   const [med, setMed] = useState({
     data: hoje(),
     descricao: "",
-    valor: ""
+    valor: "",
+    vencimento: ""
   });
   const [gas, setGas] = useState({
     data: hoje(),
@@ -1464,6 +1496,7 @@ function ObraDetalhe({
     [campo]: arr
   });
   const lancarNoCaixa = m => {
+    const vinculado = d.lancamentos.find(l => l.medicaoId === m.id && l.status === "previsto");
     up({
       obras: d.obras.map(x => x.id === id ? {
         ...x,
@@ -1472,7 +1505,11 @@ function ObraDetalhe({
           recebida: true
         } : y)
       } : x),
-      lancamentos: [{
+      lancamentos: vinculado ? d.lancamentos.map(l => l.id === vinculado.id ? {
+        ...l,
+        status: "pago",
+        data: hoje()
+      } : l) : [{
         id: uid(),
         data: hoje(),
         desc: (o.nome || o.cliente) + " · " + (m.descricao || "medição"),
@@ -1481,7 +1518,8 @@ function ObraDetalhe({
         forma: "Pix",
         status: "pago",
         categoria: "obra",
-        obraId: id
+        obraId: id,
+        medicaoId: m.id
       }, ...d.lancamentos]
     });
   };
@@ -1604,104 +1642,145 @@ function ObraDetalhe({
       voltar();
     }
   }, "Excluir obra")), sub === "medicoes" && React.createElement(React.Fragment, null, React.createElement("p", {
-    className: "dl-note"
-  }, "Cada medi\xE7\xE3o vira uma cobran\xE7a. Ao marcar como recebida, ela entra no caixa automaticamente."), React.createElement("div", {
-    className: "dl-form"
-  }, React.createElement("div", {
-    className: "dl-f"
-  }, React.createElement("input", {
-    className: "dl-in",
-    type: "date",
-    value: med.data,
-    onChange: e => setMed({
+  className: "dl-note"
+}, "Cada medi\xE7\xE3o vira uma cobran\xE7a prevista no Caixa. Ao marcar como recebida, ela vira dinheiro que j\xE1 caiu."), React.createElement("div", {
+  className: "dl-form"
+}, React.createElement("div", {
+  className: "dl-f"
+}, React.createElement("input", {
+  className: "dl-in",
+  type: "date",
+  value: med.data,
+  onChange: e => setMed({
+    ...med,
+    data: e.target.value
+  })
+}), React.createElement("input", {
+  className: "dl-in",
+  inputMode: "decimal",
+  placeholder: "R$",
+  value: med.valor,
+  onChange: e => setMed({
+    ...med,
+    valor: e.target.value
+  })
+})), React.createElement("div", {
+  className: "dl-f"
+}, React.createElement("input", {
+  className: "dl-in",
+  placeholder: "Descri\xE7\xE3o da medi\xE7\xE3o",
+  value: med.descricao,
+  onChange: e => setMed({
+    ...med,
+    descricao: e.target.value
+  })
+})), React.createElement("div", {
+  className: "dl-f"
+}, React.createElement("input", {
+  className: "dl-in",
+  type: "date",
+  value: med.vencimento,
+  onChange: e => setMed({
+    ...med,
+    vencimento: e.target.value
+  })
+})), React.createElement("p", {
+  className: "dl-note",
+  style: {
+    marginTop: -4
+  }
+}, "A data acima \xE9 a previs\xE3o de quando esse valor deve cair (opcional)."), React.createElement("button", {
+  className: "dl-btn",
+  onClick: () => {
+    if (!num(med.valor)) return;
+    const novaMedicao = {
+      id: uid(),
       ...med,
-      data: e.target.value
-    })
-  }), React.createElement("input", {
-    className: "dl-in",
-    inputMode: "decimal",
-    placeholder: "R$",
-    value: med.valor,
-    onChange: e => setMed({
-      ...med,
-      valor: e.target.value
-    })
-  })), React.createElement("div", {
-    className: "dl-f"
-  }, React.createElement("input", {
-    className: "dl-in",
-    placeholder: "Descri\xE7\xE3o da medi\xE7\xE3o",
-    value: med.descricao,
-    onChange: e => setMed({
-      ...med,
-      descricao: e.target.value
-    })
-  })), React.createElement("button", {
-    className: "dl-btn",
-    onClick: () => {
-      if (!num(med.valor)) return;
-      patchLista("medicoes", [...(o.medicoes || []), {
+      recebida: false
+    };
+    up({
+      obras: d.obras.map(x => x.id === id ? {
+        ...x,
+        medicoes: [...(x.medicoes || []), novaMedicao]
+      } : x),
+      lancamentos: [{
         id: uid(),
-        ...med,
-        recebida: false
-      }]);
-      setMed({
-        data: hoje(),
-        descricao: "",
-        valor: ""
-      });
-    }
-  }, "Lan\xE7ar medi\xE7\xE3o")), (o.medicoes || []).length === 0 && React.createElement("div", {
-    className: "dl-empty"
-  }, "Nenhuma medi\xE7\xE3o lan\xE7ada."), (o.medicoes || []).map(m => React.createElement("div", {
-    className: "dl-row",
-    key: m.id
-  }, React.createElement("div", {
-    className: "dl-row-main"
-  }, React.createElement("div", {
-    className: "dl-row-t"
-  }, m.descricao || "medição"), React.createElement("div", {
-    className: "dl-row-s"
-  }, br(m.data), " \xB7 ", m.recebida ? "recebida" : "a receber")), React.createElement("div", {
-    className: "dl-row-v",
-    style: {
-      color: m.recebida ? "var(--terra)" : "var(--cobre)"
-    }
-  }, brl(num(m.valor))), !m.recebida && React.createElement("button", {
-    className: "dl-x",
-    title: "marcar como recebida",
-    onClick: () => lancarNoCaixa(m)
-  }, "\u2713"), React.createElement("button", {
-    className: "dl-x",
-    onClick: () => patchLista("medicoes", (o.medicoes || []).filter(y => y.id !== m.id))
-  }, "\xD7"))), React.createElement("div", {
-    className: "dl-total"
-  }, React.createElement("span", null, "Medido"), React.createElement("b", null, brl(k.med))), React.createElement("h3", {
-    style: {
-      marginTop: 18,
-      marginBottom: 6
-    }
-  }, "Recebimentos"), React.createElement("p", {
-    className: "dl-note"
-  }, "Tudo que entrou por essa obra, lan\xE7ado aqui ou direto na aba Caixa."), k.lanc.filter(l => l.tipo === "e").length === 0 && React.createElement("div", {
-    className: "dl-empty"
-  }, "Nada recebido ainda."), k.lanc.filter(l => l.tipo === "e").map(l => React.createElement("div", {
-    className: "dl-row",
-    key: l.id
-  }, React.createElement("div", {
-    className: "dl-row-main"
-  }, React.createElement("div", {
-    className: "dl-row-t"
-  }, l.desc), React.createElement("div", {
-    className: "dl-row-s"
-  }, br(l.data), " \xB7 ", l.forma, l.status === "previsto" ? " · previsto" : "")), React.createElement("div", {
-    className: "dl-row-v",
-    style: {
-      color: "var(--terra)"
-    }
-  }, brl(num(l.valor))))), React.createElement("div", {
-    className: "dl-total"
-  }, React.createElement("span", null, "Recebido"), React.createElement("b", null, brl(k.receb)))), sub === "gastos" && React.createElement(React.Fragment, null, React.createElement("div", {
+        data: med.data,
+        vencimento: med.vencimento || "",
+        desc: (o.nome || o.cliente) + " · " + (med.descricao || "medição"),
+        valor: med.valor,
+        tipo: "e",
+        forma: "Pix",
+        status: "previsto",
+        categoria: "obra",
+        obraId: id,
+        medicaoId: novaMedicao.id
+      }, ...d.lancamentos]
+    });
+    setMed({
+      data: hoje(),
+      descricao: "",
+      valor: "",
+      vencimento: ""
+    });
+  }
+}, "Lan\xE7ar medi\xE7\xE3o")), (o.medicoes || []).length === 0 && React.createElement("div", {
+  className: "dl-empty"
+}, "Nenhuma medi\xE7\xE3o lan\xE7ada."), (o.medicoes || []).map(m => React.createElement("div", {
+  className: "dl-row",
+  key: m.id
+}, React.createElement("div", {
+  className: "dl-row-main"
+}, React.createElement("div", {
+  className: "dl-row-t"
+}, m.descricao || "medição"), React.createElement("div", {
+  className: "dl-row-s"
+}, br(m.data), " \xB7 ", m.recebida ? "recebida" : m.vencimento ? "previsão " + br(m.vencimento) : "a receber, sem data prevista")), React.createElement("div", {
+  className: "dl-row-v",
+  style: {
+    color: m.recebida ? "var(--terra)" : "var(--cobre)"
+  }
+}, brl(num(m.valor))), !m.recebida && React.createElement("button", {
+  className: "dl-x",
+  title: "marcar como recebida",
+  onClick: () => lancarNoCaixa(m)
+}, "\u2713"), React.createElement("button", {
+  className: "dl-x",
+  onClick: () => up({
+    obras: d.obras.map(x => x.id === id ? {
+      ...x,
+      medicoes: (x.medicoes || []).filter(y => y.id !== m.id)
+    } : x),
+    lancamentos: d.lancamentos.filter(l => l.medicaoId !== m.id || l.status !== "previsto")
+  })
+}, "\xD7"))), React.createElement("div", {
+  className: "dl-total"
+}, React.createElement("span", null, "Medido"), React.createElement("b", null, brl(k.med))), React.createElement("h3", {
+  style: {
+    marginTop: 18,
+    marginBottom: 6
+  }
+}, "Recebimentos"), React.createElement("p", {
+  className: "dl-note"
+}, "Tudo que entrou por essa obra, lan\xE7ado aqui ou direto na aba Caixa."), k.lanc.filter(l => l.tipo === "e").length === 0 && React.createElement("div", {
+  className: "dl-empty"
+}, "Nada recebido ainda."), k.lanc.filter(l => l.tipo === "e").map(l => React.createElement("div", {
+  className: "dl-row",
+  key: l.id
+}, React.createElement("div", {
+  className: "dl-row-main"
+}, React.createElement("div", {
+  className: "dl-row-t"
+}, l.desc), React.createElement("div", {
+  className: "dl-row-s"
+}, br(l.data), " \xB7 ", l.forma, l.status === "previsto" ? " · previsto" : "")), React.createElement("div", {
+  className: "dl-row-v",
+  style: {
+    color: "var(--terra)"
+  }
+}, brl(num(l.valor))))), React.createElement("div", {
+  className: "dl-total"
+}, React.createElement("span", null, "Recebido"), React.createElement("b", null, brl(k.receb)))), sub === "gastos" && React.createElement(React.Fragment, null, React.createElement("div", {
     className: "dl-form"
   }, React.createElement("div", {
     className: "dl-f"
@@ -2156,7 +2235,7 @@ function CaixaReceber({
   up,
   c
 }) {
-  const prev = d.lancamentos.filter(l => l.status === "previsto").sort((a, b) => (a.vencimento || "9999").localeCompare(b.vencimento || "9999"));
+  const prev = d.lancamentos.filter(l => l.status === "previsto" && !l.medicaoId).sort((a, b) => (a.vencimento || "9999").localeCompare(b.vencimento || "9999"));
   const baixar = l => up({
     lancamentos: d.lancamentos.map(y => y.id === l.id ? {
       ...y,
@@ -2174,26 +2253,34 @@ function CaixaReceber({
     });
   });
   pendentes.sort((a, b) => (a.medicao.data || "9999").localeCompare(b.medicao.data || "9999"));
-  const marcarRecebida = (obra, m) => up({
-    obras: d.obras.map(x => x.id === obra.id ? {
-      ...x,
-      medicoes: (x.medicoes || []).map(y => y.id === m.id ? {
-        ...y,
-        recebida: true
-      } : y)
-    } : x),
-    lancamentos: [{
-      id: uid(),
-      data: hoje(),
-      desc: (obra.nome || obra.cliente) + " · " + (m.descricao || "medição"),
-      valor: m.valor,
-      tipo: "e",
-      forma: "Pix",
-      status: "pago",
-      categoria: "obra",
-      obraId: obra.id
-    }, ...d.lancamentos]
-  });
+  const marcarRecebida = (obra, m) => {
+    const vinculado = d.lancamentos.find(l => l.medicaoId === m.id && l.status === "previsto");
+    up({
+      obras: d.obras.map(x => x.id === obra.id ? {
+        ...x,
+        medicoes: (x.medicoes || []).map(y => y.id === m.id ? {
+          ...y,
+          recebida: true
+        } : y)
+      } : x),
+      lancamentos: vinculado ? d.lancamentos.map(l => l.id === vinculado.id ? {
+        ...l,
+        status: "pago",
+        data: hoje()
+      } : l) : [{
+        id: uid(),
+        data: hoje(),
+        desc: (obra.nome || obra.cliente) + " · " + (m.descricao || "medição"),
+        valor: m.valor,
+        tipo: "e",
+        forma: "Pix",
+        status: "pago",
+        categoria: "obra",
+        obraId: obra.id,
+        medicaoId: m.id
+      }, ...d.lancamentos]
+    });
+  };
   return React.createElement(React.Fragment, null, React.createElement("div", {
     className: "dl-grid",
     style: {
@@ -2289,7 +2376,7 @@ function CaixaReceber({
     className: "dl-row-t"
   }, obra.nome || obra.cliente), React.createElement("div", {
     className: "dl-row-s"
-  }, m.descricao || "medição", " \xB7 lan\xE7ada ", br(m.data))), React.createElement("div", {
+  }, m.descricao || "medição", " \xB7 ", m.vencimento ? "previsão " + br(m.vencimento) : "sem data prevista")), React.createElement("div", {
     className: "dl-row-v",
     style: {
       color: "var(--cobre)"
