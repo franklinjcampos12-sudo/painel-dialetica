@@ -104,7 +104,7 @@ Funciona: custos fixos e variáveis com sugestões, contratos com agenda de visi
 1. ~~Hospedar~~ — feito: GitHub Pages, publica sozinho a cada `git push` (repo `painel-dialetica`)
 2. ~~Service worker~~ — feito (`sw.js`, cache `dialetica-v1`). Testado de verdade (servidor local derrubado / rede desligada via DevTools): o painel abre normalmente sem internet depois da primeira visita.
 3. ~~Pré-compilar o JSX~~ — feito, ver nota acima sobre `build.js`
-4. Gerar ícone PNG 192 e 512 além do SVG, para compatibilidade mais ampla
+4. ~~Gerar ícone PNG 192 e 512~~ — feito (`icone-192.png`, `icone-512.png`, gerados do `icone.svg` via Chrome headless), incluídos no manifest e no `<head>`
 5. Backup automático periódico, já que hoje depende de ele lembrar
 
 ## Como trabalhar com ele
