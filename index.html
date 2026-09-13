@@ -417,7 +417,64 @@ function PainelDialetica() {
     const rendaPassiva = rendaAtivos + outrasRendas;
     const independencia = custoVida > 0 ? rendaPassiva / custoVida * 100 : 0;
     const patrimonio = d.patrimonio.reduce((s2, x) => s2 + num(x.valor), 0) + reserva + num(d.fundoAtivos);
+
+    // Resultado de cada mês, apurado direto dos lançamentos já pagos.
+    // Nada disso é guardado: se um lançamento mudar, o histórico se corrige sozinho.
+    const porMes = {};
+    pagos.forEach(l => {
+      const m = (l.data || "").slice(0, 7);
+      if (!m) return;
+      if (!porMes[m]) porMes[m] = {
+        ent: 0,
+        sai: 0,
+        n: 0
+      };
+      if (l.tipo === "e") porMes[m].ent += num(l.valor);else porMes[m].sai += num(l.valor);
+      porMes[m].n++;
+    });
+    const mesAtual = ymHoje();
+    const historico = [];
+    for (let k = 11; k >= 0; k--) {
+      const m = addMes(mesAtual, -k);
+      const r = porMes[m] || {
+        ent: 0,
+        sai: 0,
+        n: 0
+      };
+      historico.push({
+        ym: m,
+        ent: r.ent,
+        sai: r.sai,
+        resultado: r.ent - r.sai,
+        vazio: r.n === 0,
+        atual: m === mesAtual
+      });
+    }
+    // Meses fechados seguidos com lucro, contando de trás pra frente a partir do mês passado.
+    // O mês corrente não conta porque ainda não terminou.
+    let sequenciaLucro = 0;
+    for (let k = 1; k <= 60; k++) {
+      const r = porMes[addMes(mesAtual, -k)];
+      if (!r || r.n === 0 || r.ent - r.sai <= 0) break;
+      sequenciaLucro++;
+    }
+    // Ciclo de caixa: dias entre o primeiro gasto e o último recebimento de cada obra.
+    const ciclos = [];
+    d.obras.forEach(o => {
+      const lanc = d.lancamentos.filter(l => l.obraId === o.id && l.status !== "previsto" && l.data);
+      const gastos = lanc.filter(l => l.tipo === "s").map(l => l.data).sort();
+      const recebs = lanc.filter(l => l.tipo === "e").map(l => l.data).sort();
+      if (!gastos.length || !recebs.length) return;
+      const dd = dias(gastos[0], recebs[recebs.length - 1]);
+      if (dd >= 0) ciclos.push(dd);
+    });
+    const cicloMedio = ciclos.length ? Math.round(ciclos.reduce((s2, x) => s2 + x, 0) / ciclos.length) : 0;
+
     return {
+      historico,
+      sequenciaLucro,
+      cicloMedio,
+      ciclosObras: ciclos.length,
       custoVida,
       outrasRendas,
       rendaPassiva,
@@ -464,8 +521,8 @@ function PainelDialetica() {
         t: "Margem apurada por tipo de obra",
         ok: d.marcos.margens
       }, {
-        t: "Ciclo de caixa medido em dias",
-        ok: num(d.marcos.ciclo) > 0
+        t: c.cicloMedio > 0 ? "Ciclo de caixa medido: " + c.cicloMedio + " dias" : "Ciclo de caixa medido em dias",
+        ok: num(d.marcos.ciclo) > 0 || c.cicloMedio > 0
       }]
     }, {
       n: "Fase 1",
@@ -498,8 +555,8 @@ function PainelDialetica() {
         t: "Reserva de 6 meses de custo fixo",
         ok: c.reservaMeses >= 6
       }, {
-        t: "Lucro consistente por 6 meses seguidos",
-        ok: d.marcos.lucro6
+        t: c.sequenciaLucro > 0 && c.sequenciaLucro < 6 && !d.marcos.lucro6 ? "Lucro consistente por 6 meses seguidos (vai em " + c.sequenciaLucro + ")" : "Lucro consistente por 6 meses seguidos",
+        ok: d.marcos.lucro6 || c.sequenciaLucro >= 6
       }]
     }, {
       n: "Fase 5",
@@ -2995,7 +3052,11 @@ function Metas({
       marginTop: 18,
       marginBottom: 8
     }
-  }, "Marcos que voc\xEA confirma na m\xE3o"), [["margens", "Já apurei a margem por tipo de obra dos últimos 12 meses"], ["operacao60", "A operação rodou 60 dias seguidos sem mim no canteiro"], ["lucro6", "Tive lucro em 6 meses seguidos"], ["primeiroAtivo6", "Meu primeiro ativo se paga sozinho há 6 meses"]].map(([k, t]) => React.createElement("label", {
+  }, "Marcos que voc\xEA confirma na m\xE3o"), (() => {
+  const autos = {
+    lucro6: c.sequenciaLucro >= 6 ? "o painel já apurou: " + c.sequenciaLucro + " meses seguidos no azul" : c.sequenciaLucro > 0 ? "o painel apurou " + c.sequenciaLucro + " de 6 meses seguidos até agora" : null
+  };
+  return [["margens", "Já apurei a margem por tipo de obra dos últimos 12 meses"], ["operacao60", "A operação rodou 60 dias seguidos sem mim no canteiro"], ["lucro6", "Tive lucro em 6 meses seguidos"], ["primeiroAtivo6", "Meu primeiro ativo se paga sozinho há 6 meses"]].map(([k, t]) => React.createElement("label", {
     className: "dl-chk",
     key: k
   }, React.createElement("input", {
@@ -3007,14 +3068,26 @@ function Metas({
         [k]: e.target.checked
       }
     })
-  }), React.createElement("span", null, t))), React.createElement("div", {
+  }), React.createElement("span", null, t, autos[k] && React.createElement("span", {
+    className: "dl-row-s",
+    style: {
+      display: "block",
+      color: c.sequenciaLucro >= 6 ? "var(--terra)" : "var(--muted)"
+    }
+  }, autos[k]))));
+})(), React.createElement("div", {
     className: "dl-form"
   }, React.createElement("p", {
     className: "dl-stat-label",
     style: {
       marginBottom: 6
     }
-  }, "Ciclo de caixa: dias entre o primeiro gasto e o \xFAltimo recebimento"), React.createElement("input", {
+  }, "Ciclo de caixa: dias entre o primeiro gasto e o \xFAltimo recebimento"), c.ciclosObras > 0 && React.createElement("p", {
+    className: "dl-row-s",
+    style: {
+      marginBottom: 6
+    }
+  }, "O painel j\xE1 apurou ", c.cicloMedio, " dias pelas suas obras. S\xF3 preencha abaixo se quiser usar outro n\xFAmero."), React.createElement("input", {
     className: "dl-in",
     inputMode: "numeric",
     placeholder: "dias",
@@ -4101,7 +4174,75 @@ function CaixaFechar({
     style: {
       marginTop: 14
     }
-  }, React.createElement("h3", null, "Depois disso"), React.createElement("p", null, "As contas a pagar e as cobran\xE7as ficam na aba \u201CA receber e a pagar\u201D. Conforme o dinheiro entra e sai de verdade, voc\xEA d\xE1 baixa no \u2713 e o caixa se ajusta sozinho.")));
+  }, React.createElement("h3", null, "Depois disso"), React.createElement("p", null, "As contas a pagar e as cobran\xE7as ficam na aba \u201CA receber e a pagar\u201D. Conforme o dinheiro entra e sai de verdade, voc\xEA d\xE1 baixa no \u2713 e o caixa se ajusta sozinho.")), (() => {
+  const hist = c.historico.filter(h => !h.vazio || h.atual);
+  const maior = Math.max(1, ...hist.map(h => Math.abs(h.resultado)));
+  return React.createElement(React.Fragment, null, React.createElement("h3", {
+    style: {
+      marginTop: 20,
+      marginBottom: 4
+    }
+  }, "Resultado m\xEAs a m\xEAs"), React.createElement("p", {
+    className: "dl-note"
+  }, "Apurado sozinho pelo que entrou e saiu de verdade. N\xE3o precisa lan\xE7ar nada al\xE9m do que voc\xEA j\xE1 lan\xE7a."), hist.length === 0 && React.createElement("div", {
+    className: "dl-empty"
+  }, "Ainda n\xE3o h\xE1 movimento lan\xE7ado para montar o hist\xF3rico."), hist.map(h => {
+    const pos = h.resultado > 0;
+    const largura = Math.round(Math.abs(h.resultado) / maior * 100);
+    return React.createElement("div", {
+      className: "dl-row",
+      key: h.ym,
+      style: {
+        display: "block",
+        marginBottom: 6
+      }
+    }, React.createElement("div", {
+      style: {
+        display: "flex",
+        justifyContent: "space-between",
+        gap: 10,
+        alignItems: "baseline"
+      }
+    }, React.createElement("div", {
+      className: "dl-row-main"
+    }, React.createElement("div", {
+      className: "dl-row-t"
+    }, mesLabel(h.ym), h.atual ? " · em curso" : ""), React.createElement("div", {
+      className: "dl-row-s"
+    }, "entrou ", brl(h.ent), " \xB7 saiu ", brl(h.sai))), React.createElement("div", {
+      className: "dl-row-v",
+      style: {
+        color: pos ? "var(--terra)" : h.resultado < 0 ? "var(--fase)" : "var(--muted)"
+      }
+    }, h.resultado > 0 ? "+" : h.resultado < 0 ? "−" : "", brl(Math.abs(h.resultado)))), React.createElement("div", {
+      className: "dl-prog",
+      style: {
+        marginTop: 6
+      }
+    }, React.createElement("i", {
+      style: {
+        width: largura + "%",
+        background: pos ? "var(--terra)" : "var(--fase)"
+      }
+    })));
+  }), React.createElement("div", {
+    className: "dl-total"
+  }, React.createElement("span", null, "Meses fechados seguidos com lucro"), React.createElement("b", {
+    style: {
+      color: c.sequenciaLucro >= 6 ? "var(--terra)" : undefined
+    }
+  }, c.sequenciaLucro, " de 6")), c.sequenciaLucro >= 6 && React.createElement("div", {
+    className: "dl-info",
+    style: {
+      marginTop: 10
+    }
+  }, React.createElement("h3", null, "Fase 4 liberada por este n\xFAmero"), React.createElement("p", null, "Voc\xEA fechou 6 meses seguidos no azul. Essa condi\xE7\xE3o da Fase 4 n\xE3o precisa mais ser marcada na m\xE3o.")), c.ciclosObras > 0 && React.createElement("div", {
+    className: "dl-info",
+    style: {
+      marginTop: 10
+    }
+  }, React.createElement("h3", null, "Ciclo de caixa: ", c.cicloMedio, " dias"), React.createElement("p", null, "M\xE9dia de dias entre o primeiro gasto e o \xFAltimo recebimento, medida em ", c.ciclosObras, " ", c.ciclosObras === 1 ? "obra que já teve" : "obras que já tiveram", " gasto e recebimento lan\xE7ados. \xC9 quanto tempo o seu dinheiro fica fora do caixa.")));
+})());
 }
 ReactDOM.createRoot(document.getElementById("raiz")).render(React.createElement(PainelDialetica, null));
 </script>
