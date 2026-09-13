@@ -2612,6 +2612,7 @@ function CaixaFluxo({
     }
   }, React.createElement("h3", null, "Ponto de equil\xEDbrio"), React.createElement("p", null, "Com custo fixo de ", brl(c.custoFixo), " e vari\xE1vel estimado de ", brl(c.varMensal), ", a empresa precisa faturar pelo menos ", brl(c.custoFixo + c.varMensal), " por m\xEAs para n\xE3o consumir caixa.")));
 }
+const FONTES_META = [["manual", "acompanho na mão"], ["recorrente", "soma dos contratos recorrentes"], ["reserva", "valor da reserva"], ["caixa", "saldo em caixa"], ["ativos", "renda dos ativos"]];
 function Metas({
   d,
   up,
@@ -2625,7 +2626,8 @@ function Metas({
     fonte: "manual",
     atual: ""
   });
-  const [sub, setSub] = useState("");
+  const [subs, setSubs] = useState({});
+  const [editando, setEditando] = useState(null);
   const add = () => {
     if (!f.nome.trim()) return;
     up({
@@ -2667,7 +2669,7 @@ function Metas({
     className: "dl-sec"
   }, React.createElement("h2", null, "Metas"), React.createElement("p", {
     className: "dl-note"
-  }, "Meta com fonte autom\xE1tica se atualiza sozinha conforme voc\xEA usa o painel."), React.createElement("div", {
+  }, "Meta com fonte autom\xE1tica se atualiza sozinha conforme voc\xEA usa o painel. Meta \"acompanho na m\xE3o\" \xE9 voc\xEA quem digita quanto j\xE1 conseguiu."), React.createElement("div", {
     className: "dl-form"
   }, React.createElement("div", {
     className: "dl-f"
@@ -2707,27 +2709,33 @@ function Metas({
       ...f,
       fonte: e.target.value
     })
-  }, React.createElement("option", {
-    value: "manual"
-  }, "acompanho na m\xE3o"), React.createElement("option", {
-    value: "recorrente"
-  }, "soma dos contratos recorrentes"), React.createElement("option", {
-    value: "reserva"
-  }, "valor da reserva"), React.createElement("option", {
-    value: "caixa"
-  }, "saldo em caixa"), React.createElement("option", {
-    value: "ativos"
-  }, "renda dos ativos"))), React.createElement("button", {
+  }, FONTES_META.map(([v, r]) => React.createElement("option", {
+    key: v,
+    value: v
+  }, r)))), f.fonte === "manual" && React.createElement("div", {
+    className: "dl-f"
+  }, React.createElement("input", {
+    className: "dl-in",
+    inputMode: "decimal",
+    placeholder: "J\xE1 consegui R$ (opcional)",
+    value: f.atual,
+    onChange: e => setF({
+      ...f,
+      atual: e.target.value
+    })
+  })), React.createElement("button", {
     className: "dl-btn",
     onClick: add
   }, "Criar meta")), d.metas.length === 0 && React.createElement("div", {
     className: "dl-empty"
   }, "Sugest\xF5es para come\xE7ar: recorrente cobrir o custo fixo de ", brl(c.custoFixo || 0), "; reserva de 6 meses; primeiro ativo comprado."), d.metas.map(m => {
-    const at = valorMeta(m),
-      alvo = num(m.alvo);
+    const at = valorMeta(m);
+    const alvo = num(m.alvo);
     const pct = alvo > 0 ? Math.min(100, at / alvo * 100) : 0;
     const pronta = at >= alvo && alvo > 0;
-    const subs = m.submetas || [];
+    const lista = m.submetas || [];
+    const emEdicao = editando === m.id;
+    const fonteLabel = (FONTES_META.find(([v]) => v === (m.fonte || "manual")) || FONTES_META[0])[1];
     return React.createElement("div", {
       key: m.id,
       style: {
@@ -2753,6 +2761,12 @@ function Metas({
     }, m.nome), React.createElement("div", {
       className: "dl-row-s"
     }, pronta ? "alcançada" : "faltam " + brl(alvo - at), " \xB7 ", brl(at), " de ", brl(alvo), m.prazo ? " · até " + br(m.prazo) : "")), React.createElement("button", {
+      className: "dl-link",
+      style: {
+        flex: "0 0 auto"
+      },
+      onClick: () => setEditando(emEdicao ? null : m.id)
+    }, emEdicao ? "pronto" : "editar"), React.createElement("button", {
       className: "dl-x",
       onClick: () => up({
         metas: d.metas.filter(y => y.id !== m.id)
@@ -2764,20 +2778,84 @@ function Metas({
         width: pct + "%",
         background: pronta ? "var(--terra)" : "var(--cobre)"
       }
-    })), m.fonte === "manual" && React.createElement("input", {
+    })), (m.fonte || "manual") === "manual" ? React.createElement("div", {
+      className: "dl-f",
+      style: {
+        marginTop: 8,
+        marginBottom: 0,
+        alignItems: "center"
+      }
+    }, React.createElement("span", {
+      className: "dl-stat-label",
+      style: {
+        flex: "0 0 auto"
+      }
+    }, "j\xE1 consegui"), React.createElement("input", {
       className: "dl-in",
       style: {
-        marginTop: 8
+        maxWidth: 130,
+        textAlign: "right"
       },
       inputMode: "decimal",
-      placeholder: "onde estou hoje R$",
-      value: m.atual,
+      placeholder: "R$",
+      value: m.atual || "",
       onChange: e => edit(m.id, {
         atual: e.target.value
       })
+    })) : React.createElement("p", {
+      className: "dl-row-s",
+      style: {
+        marginTop: 8
+      }
+    }, "Vem sozinho de: ", fonteLabel, ". Para digitar o valor na m\xE3o, toque em editar e mude a fonte."), emEdicao && React.createElement("div", {
+      className: "dl-form",
+      style: {
+        marginTop: 10,
+        marginBottom: 0
+      }
+    }, React.createElement("div", {
+      className: "dl-f"
+    }, React.createElement("input", {
+      className: "dl-in",
+      placeholder: "Objetivo",
+      value: m.nome || "",
+      onChange: e => edit(m.id, {
+        nome: e.target.value
+      })
     })), React.createElement("div", {
+      className: "dl-f"
+    }, React.createElement("input", {
+      className: "dl-in",
+      inputMode: "decimal",
+      placeholder: "Alvo R$",
+      value: m.alvo || "",
+      onChange: e => edit(m.id, {
+        alvo: e.target.value
+      })
+    }), React.createElement("input", {
+      className: "dl-in",
+      type: "date",
+      value: m.prazo || "",
+      onChange: e => edit(m.id, {
+        prazo: e.target.value
+      })
+    })), React.createElement("div", {
+      className: "dl-f",
+      style: {
+        marginBottom: 0
+      }
+    }, React.createElement("select", {
+      className: "dl-in",
+      value: m.fonte || "manual",
+      onChange: e => edit(m.id, {
+        fonte: e.target.value
+      })
+    }, FONTES_META.map(([v, r]) => React.createElement("option", {
+      key: v,
+      value: v
+    }, r)))))), React.createElement("div", {
       className: "dl-cond"
-    }, subs.map(s => React.createElement("label", {
+    }, lista.map(s => React.createElement("label", {
       className: "dl-cond-row",
       key: s.id,
       style: {
@@ -2790,7 +2868,7 @@ function Metas({
         marginTop: 4
       },
       onChange: () => edit(m.id, {
-        submetas: subs.map(y => y.id === s.id ? {
+        submetas: lista.map(y => y.id === s.id ? {
           ...y,
           ok: !y.ok
         } : y)
@@ -2804,7 +2882,7 @@ function Metas({
     }, s.t), React.createElement("button", {
       className: "dl-x",
       onClick: () => edit(m.id, {
-        submetas: subs.filter(y => y.id !== s.id)
+        submetas: lista.filter(y => y.id !== s.id)
       })
     }, "\xD7"))), React.createElement("div", {
       className: "dl-f",
@@ -2814,21 +2892,28 @@ function Metas({
       }
     }, React.createElement("input", {
       className: "dl-in",
-      placeholder: "Nova submeta",
-      value: sub,
-      onChange: e => setSub(e.target.value)
+      placeholder: "Novo passo",
+      value: subs[m.id] || "",
+      onChange: e => setSubs({
+        ...subs,
+        [m.id]: e.target.value
+      })
     }), React.createElement("button", {
       className: "dl-btn-2",
       onClick: () => {
-        if (!sub.trim()) return;
+        const t = (subs[m.id] || "").trim();
+        if (!t) return;
         edit(m.id, {
-          submetas: [...subs, {
+          submetas: [...lista, {
             id: uid(),
-            t: sub.trim(),
+            t,
             ok: false
           }]
         });
-        setSub("");
+        setSubs({
+          ...subs,
+          [m.id]: ""
+        });
       }
     }, "+"))));
   }), React.createElement("h3", {
