@@ -84,6 +84,8 @@ const CSS = `
 
 .dl-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
 .dl-stat { background:var(--paper); border:1px solid var(--line); border-radius:2px; padding:11px 12px; }
+.dl-stat-btn { display:block; width:100%; text-align:left; font:inherit; color:inherit; -webkit-tap-highlight-color:transparent; }
+.dl-stat-btn:active { background:var(--base); }
 .dl-stat-label { font-size:12.5px; color:var(--muted); }
 .dl-stat-val { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-size:24px; font-weight:600; font-variant-numeric:tabular-nums; line-height:1.2; }
 
@@ -118,6 +120,7 @@ const CSS = `
 .dl-row-s { font-size:12.5px; color:var(--muted); }
 .dl-row-v { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-size:19px; font-weight:600; font-variant-numeric:tabular-nums; flex:0 0 auto; }
 .dl-x { border:none; background:none; color:var(--muted); font-size:19px; line-height:1; padding:0 3px; flex:0 0 auto; }
+.dl-link { border:none; background:none; padding:0; font:inherit; color:var(--neutro); text-decoration:underline; text-underline-offset:2px; }
 .dl-form { background:var(--paper); border:1px dashed var(--line); border-radius:2px; padding:12px; margin-bottom:10px; }
 .dl-f { display:flex; gap:7px; margin-bottom:7px; }
 .dl-f > * { min-width:0; }
@@ -306,6 +309,7 @@ function PainelDialetica() {
   const [d, setD] = useState(VAZIO);
   const [aba, setAba] = useState("painel");
   const [det, setDet] = useState(null);
+  const [cxSub, setCxSub] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [status, setStatus] = useState("");
   const primeira = useRef(true);
@@ -520,10 +524,23 @@ function PainelDialetica() {
   }, [d, c]);
   const faseAtual = fases.find(f => f.atual) || fases[fases.length - 1];
   const travas = [];
-  if (c.emExecucao > 1) travas.push("Você tem " + c.emExecucao + " ativos em execução ao mesmo tempo. A regra é um por vez.");
-  if (num(d.fundoAtivos) > 0 && c.reservaMeses < 6) travas.push("Existe dinheiro no fundo de ativos com a reserva abaixo de 6 meses. Enquanto o pote 1 não enche, o pote 3 recebe zero.");
-  if (c.custoFixo > 0 && c.cobertura < 100 && d.custos.some(x => /encarreg|ajudant|eletricist|salári|folha|administrativ/i.test(x.nome || ""))) travas.push("Já existe folha no custo fixo sem o recorrente cobrir 100% dele. É o erro que mais quebra empresa de obra.");
-  if (c.atrasados.length) travas.push(c.atrasados.length + " cobrança(s) vencida(s) sem receber, somando " + brl(c.atrasados.reduce((s, l) => s + num(l.valor), 0)) + ". Vá na aba Caixa.");
+  if (c.emExecucao > 1) travas.push({
+    t: "Você tem " + c.emExecucao + " ativos em execução ao mesmo tempo. A regra é um por vez.",
+    aba: "ativos"
+  });
+  if (num(d.fundoAtivos) > 0 && c.reservaMeses < 6) travas.push({
+    t: "Existe dinheiro no fundo de ativos com a reserva abaixo de 6 meses. Enquanto o pote 1 não enche, o pote 3 recebe zero.",
+    aba: "metas"
+  });
+  if (c.custoFixo > 0 && c.cobertura < 100 && d.custos.some(x => /encarreg|ajudant|eletricist|salári|folha|administrativ/i.test(x.nome || ""))) travas.push({
+    t: "Já existe folha no custo fixo sem o recorrente cobrir 100% dele. É o erro que mais quebra empresa de obra.",
+    aba: "custos"
+  });
+  if (c.atrasados.length) travas.push({
+    t: c.atrasados.length + " cobrança(s) vencida(s) sem receber, somando " + brl(c.atrasados.reduce((s, l) => s + num(l.valor), 0)) + ".",
+    aba: "caixa",
+    sub: "receber"
+  });
   if (carregando) return React.createElement("div", {
     style: {
       padding: 24,
@@ -532,10 +549,16 @@ function PainelDialetica() {
     }
   }, "Abrindo o painel\u2026");
   const abas = [["painel", "Painel"], ["custos", "Custos"], ["contratos", "Recorrente"], ["obras", "Obras"], ["caixa", "Caixa"], ["metas", "Metas"], ["ativos", "Ativos"], ["vida", "Vida"], ["clientes", "Clientes"], ["backup", "Backup"]];
-  const irPara = (tipo, id) => setDet({
+  const irPara = (tipo, id, sub) => setDet({
     tipo,
-    id
+    id,
+    sub
   });
+  const irAba = (k, sub) => {
+    setAba(k);
+    setDet(null);
+    setCxSub(sub || null);
+  };
   const voltar = () => setDet(null);
   let conteudo;
   if (det?.tipo === "obra") conteudo = React.createElement(ObraDetalhe, {
@@ -544,6 +567,7 @@ function PainelDialetica() {
     upItem: upItem,
     c: c,
     id: det.id,
+    subInicial: det.sub,
     voltar: voltar
   });else if (det?.tipo === "contrato") conteudo = React.createElement(ContratoDetalhe, {
     d: d,
@@ -556,6 +580,7 @@ function PainelDialetica() {
     upItem: upItem,
     c: c,
     id: det.id,
+    subInicial: det.sub,
     voltar: voltar
   });else if (aba === "painel") conteudo = React.createElement(Painel, {
     d: d,
@@ -563,7 +588,9 @@ function PainelDialetica() {
     c: c,
     fases: fases,
     travas: travas,
-    valorMeta: valorMeta
+    valorMeta: valorMeta,
+    irAba: irAba,
+    irPara: irPara
   });else if (aba === "custos") conteudo = React.createElement(Custos, {
     d: d,
     up: up,
@@ -581,7 +608,9 @@ function PainelDialetica() {
   });else if (aba === "caixa") conteudo = React.createElement(Caixa, {
     d: d,
     up: up,
-    c: c
+    c: c,
+    irPara: irPara,
+    subInicial: cxSub
   });else if (aba === "metas") conteudo = React.createElement(Metas, {
     d: d,
     up: up,
@@ -614,10 +643,7 @@ function PainelDialetica() {
   }, abas.map(([k, r]) => React.createElement("button", {
     key: k,
     className: "dl-tab" + (aba === k && !det ? " dl-tab-on" : ""),
-    onClick: () => {
-      setAba(k);
-      setDet(null);
-    }
+    onClick: () => irAba(k)
   }, r))), conteudo, status && React.createElement("div", {
     className: "dl-save"
   }, status));
@@ -628,7 +654,9 @@ function Painel({
   c,
   fases,
   travas,
-  valorMeta
+  valorMeta,
+  irAba,
+  irPara
 }) {
   const [aberta, setAberta] = useState(null);
   const [metaAberta, setMetaAberta] = useState(null);
@@ -662,7 +690,13 @@ function Painel({
     }
   })), React.createElement("div", {
     className: "dl-legend"
-  }, React.createElement("span", null, "recorrente ", brl(c.recorrente)), React.createElement("span", null, "custo fixo ", brl(c.custoFixo)))), c.custoVida > 0 && React.createElement("div", {
+  }, React.createElement("button", {
+    className: "dl-link",
+    onClick: () => irAba("contratos")
+  }, "recorrente ", brl(c.recorrente)), React.createElement("button", {
+    className: "dl-link",
+    onClick: () => irAba("custos")
+  }, "custo fixo ", brl(c.custoFixo)))), c.custoVida > 0 && React.createElement("div", {
     className: "dl-meter",
     style: {
       marginTop: 10
@@ -682,8 +716,12 @@ function Painel({
     }
   }, React.createElement("p", {
     className: "dl-stat-label"
-  }, "patrim\xF4nio"), React.createElement("div", {
-    className: "dl-stat-val"
+  }, "patrim\xF4nio"), React.createElement("button", {
+    className: "dl-link dl-stat-val",
+    style: {
+      display: "block"
+    },
+    onClick: () => irAba("vida")
   }, brl(c.patrimonio)))), React.createElement("div", {
     className: "dl-bus"
   }, React.createElement("div", {
@@ -694,7 +732,13 @@ function Painel({
     }
   })), React.createElement("div", {
     className: "dl-legend"
-  }, React.createElement("span", null, "renda passiva ", brl(c.rendaPassiva)), React.createElement("span", null, "custo de vida ", brl(c.custoVida)))), d.metas.length > 0 && React.createElement("div", {
+  }, React.createElement("button", {
+    className: "dl-link",
+    onClick: () => irAba("ativos")
+  }, "renda passiva ", brl(c.rendaPassiva)), React.createElement("button", {
+    className: "dl-link",
+    onClick: () => irAba("vida")
+  }, "custo de vida ", brl(c.custoVida)))), d.metas.length > 0 && React.createElement("div", {
     className: "dl-info",
     style: {
       marginTop: 10,
@@ -778,16 +822,25 @@ function Painel({
         color: s.ok ? "var(--muted)" : undefined
       }
     }, s.t)))));
-  })), React.createElement("div", {
+  }), React.createElement("button", {
+    className: "dl-link",
+    style: {
+      marginTop: 10,
+      display: "inline-block"
+    },
+    onClick: () => irAba("metas")
+  }, "editar metas \u2192")), React.createElement("div", {
     className: "dl-grid"
-  }, React.createElement("div", {
-    className: "dl-stat"
+  }, React.createElement("button", {
+    className: "dl-stat dl-stat-btn",
+    onClick: () => irAba("caixa", "conta")
   }, React.createElement("p", {
     className: "dl-stat-label"
   }, "Caixa hoje"), React.createElement("div", {
     className: "dl-stat-val"
-  }, brl(c.caixa))), React.createElement("div", {
-    className: "dl-stat"
+  }, brl(c.caixa))), React.createElement("button", {
+    className: "dl-stat dl-stat-btn",
+    onClick: () => irAba("metas")
   }, React.createElement("p", {
     className: "dl-stat-label"
   }, "Reserva"), React.createElement("div", {
@@ -795,20 +848,23 @@ function Painel({
     style: {
       color: c.reservaMeses >= 6 ? "var(--terra)" : c.reservaMeses >= 3 ? "var(--cobre)" : "var(--fase)"
     }
-  }, c.reservaMeses.toFixed(1), " meses")), React.createElement("div", {
-    className: "dl-stat"
+  }, c.reservaMeses.toFixed(1), " meses")), React.createElement("button", {
+    className: "dl-stat dl-stat-btn",
+    onClick: () => irAba("caixa", "receber")
   }, React.createElement("p", {
     className: "dl-stat-label"
   }, "A receber"), React.createElement("div", {
     className: "dl-stat-val"
-  }, brl(c.aReceber))), React.createElement("div", {
-    className: "dl-stat"
+  }, brl(c.aReceber))), React.createElement("button", {
+    className: "dl-stat dl-stat-btn",
+    onClick: () => irAba("caixa", "receber")
   }, React.createElement("p", {
     className: "dl-stat-label"
   }, "A pagar"), React.createElement("div", {
     className: "dl-stat-val"
-  }, brl(c.aPagar))), React.createElement("div", {
-    className: "dl-stat"
+  }, brl(c.aPagar))), React.createElement("button", {
+    className: "dl-stat dl-stat-btn",
+    onClick: () => irAba("obras")
   }, React.createElement("p", {
     className: "dl-stat-label"
   }, "Medido, aguardando receber"), React.createElement("div", {
@@ -816,20 +872,23 @@ function Painel({
     style: {
       color: "var(--cobre)"
     }
-  }, brl(c.obraAReceber))), React.createElement("div", {
-    className: "dl-stat"
+  }, brl(c.obraAReceber))), React.createElement("button", {
+    className: "dl-stat dl-stat-btn",
+    onClick: () => irAba("obras")
   }, React.createElement("p", {
     className: "dl-stat-label"
-  }, "Ainda não medido"), React.createElement("div", {
+  }, "Ainda n\xE3o medido"), React.createElement("div", {
     className: "dl-stat-val"
-  }, brl(c.obraNaoMedido))), React.createElement("div", {
-    className: "dl-stat"
+  }, brl(c.obraNaoMedido))), React.createElement("button", {
+    className: "dl-stat dl-stat-btn",
+    onClick: () => irAba("obras")
   }, React.createElement("p", {
     className: "dl-stat-label"
   }, "Margem das obras"), React.createElement("div", {
     className: "dl-stat-val"
-  }, brl(c.margemObras))), React.createElement("div", {
-    className: "dl-stat"
+  }, brl(c.margemObras))), React.createElement("button", {
+    className: "dl-stat dl-stat-btn",
+    onClick: () => irAba("ativos")
   }, React.createElement("p", {
     className: "dl-stat-label"
   }, "Renda de ativos"), React.createElement("div", {
@@ -841,13 +900,19 @@ function Painel({
     style: {
       marginTop: i ? 7 : 0
     }
-  }, t))), d.obras.length + d.contratos.length + d.lancamentos.length + d.custos.length > 0 && (!d.ultimoBackup || dias(d.ultimoBackup, hoje()) > 30) && React.createElement("div", {
+  }, t.t, t.aba && React.createElement(React.Fragment, null, " ", React.createElement("button", {
+    className: "dl-link",
+    onClick: () => irAba(t.aba, t.sub)
+  }, "resolver \u2192"))))), d.obras.length + d.contratos.length + d.lancamentos.length + d.custos.length > 0 && (!d.ultimoBackup || dias(d.ultimoBackup, hoje()) > 30) && React.createElement("div", {
     className: "dl-info",
     style: {
       marginTop: 14,
       marginBottom: 0
     }
-  }, React.createElement("h3", null, "Backup"), React.createElement("p", null, d.ultimoBackup ? "Seu último backup foi em " + br(d.ultimoBackup) + "." : "Você ainda não fez nenhum backup.", " V\xE1 na aba Backup e guarde uma c\xF3pia.")), React.createElement("div", {
+  }, React.createElement("h3", null, "Backup"), React.createElement("p", null, d.ultimoBackup ? "Seu último backup foi em " + br(d.ultimoBackup) + "." : "Você ainda não fez nenhum backup.", " ", React.createElement("button", {
+    className: "dl-link",
+    onClick: () => irAba("backup")
+  }, "Ir para a aba Backup \u2192"))), React.createElement("div", {
     className: "dl-bar"
   }, React.createElement("div", {
     className: "dl-spine"
@@ -1465,10 +1530,11 @@ function ObraDetalhe({
   upItem,
   c,
   id,
+  subInicial,
   voltar
 }) {
   const o = d.obras.find(x => x.id === id);
-  const [sub, setSub] = useState("resumo");
+  const [sub, setSub] = useState(subInicial || "resumo");
   const [med, setMed] = useState({
     data: hoje(),
     descricao: "",
@@ -1984,9 +2050,11 @@ function ObraDetalhe({
 function Caixa({
   d,
   up,
-  c
+  c,
+  irPara,
+  subInicial
 }) {
-  const [sub, setSub] = useState("conta");
+  const [sub, setSub] = useState(subInicial || "conta");
   return React.createElement("div", {
     className: "dl-sec"
   }, React.createElement("h2", null, "Caixa"), React.createElement("div", {
@@ -2001,11 +2069,13 @@ function Caixa({
   }, r))), sub === "conta" && React.createElement(CaixaConta, {
     d: d,
     up: up,
-    c: c
+    c: c,
+    irPara: irPara
   }), sub === "receber" && React.createElement(CaixaReceber, {
     d: d,
     up: up,
-    c: c
+    c: c,
+    irPara: irPara
   }), sub === "fechar" && React.createElement(CaixaFechar, {
     d: d,
     up: up,
@@ -2018,7 +2088,8 @@ function Caixa({
 function CaixaConta({
   d,
   up,
-  c
+  c,
+  irPara
 }) {
   const [f, setF] = useState({
     tipo: "e",
@@ -2205,35 +2276,53 @@ function CaixaConta({
     style: {
       marginBottom: 8
     }
-  }, "Movimento"), d.lancamentos.filter(l => l.status !== "previsto").length === 0 && React.createElement("div", {
+  }, "Movimento"), (() => {
+  const rows = d.lancamentos.filter(l => l.status !== "previsto").slice(0, 50);
+  return React.createElement(React.Fragment, null, rows.length === 0 && React.createElement("div", {
     className: "dl-empty"
-  }, "Nenhum movimento ainda."), d.lancamentos.filter(l => l.status !== "previsto").slice(0, 50).map(l => React.createElement("div", {
-    className: "dl-row",
-    key: l.id
-  }, React.createElement("div", {
-    className: "dl-row-main"
-  }, React.createElement("div", {
-    className: "dl-row-t"
-  }, l.desc || l.categoria), React.createElement("div", {
-    className: "dl-row-s"
-  }, br(l.data), " \xB7 ", l.forma, " \xB7 ", l.categoria, l.obraId && (d.obras.find(o => o.id === l.obraId) ? " · " + (d.obras.find(o => o.id === l.obraId).nome || d.obras.find(o => o.id === l.obraId).cliente) : ""), l.ativoId && (d.ativos.find(a => a.id === l.ativoId) ? " · " + d.ativos.find(a => a.id === l.ativoId).nome : ""))), React.createElement("div", {
-    className: "dl-row-v",
-    style: {
-      color: l.tipo === "e" ? "var(--terra)" : "var(--fase)"
-    }
-  }, l.tipo === "e" ? "+" : "−", brl(num(l.valor))), React.createElement("button", {
-    className: "dl-x",
-    onClick: () => up({
-      lancamentos: d.lancamentos.filter(y => y.id !== l.id)
-    })
-  }, "\xD7"))), React.createElement("div", {
+  }, "Nenhum movimento ainda."), rows.map(l => {
+    const obra = l.obraId ? d.obras.find(o => o.id === l.obraId) : null;
+    const ativo = l.ativoId ? d.ativos.find(a => a.id === l.ativoId) : null;
+    const contrato = l.contratoId ? d.contratos.find(x => x.id === l.contratoId) : null;
+    return React.createElement("div", {
+      className: "dl-row",
+      key: l.id
+    }, React.createElement("div", {
+      className: "dl-row-main"
+    }, React.createElement("div", {
+      className: "dl-row-t"
+    }, l.desc || l.categoria), React.createElement("div", {
+      className: "dl-row-s"
+    }, br(l.data), " \xB7 ", l.forma, " \xB7 ", l.categoria, obra && React.createElement(React.Fragment, null, " · ", React.createElement("button", {
+      className: "dl-link",
+      onClick: () => irPara("obra", obra.id)
+    }, obra.nome || obra.cliente)), ativo && React.createElement(React.Fragment, null, " · ", React.createElement("button", {
+      className: "dl-link",
+      onClick: () => irPara("ativo", ativo.id)
+    }, ativo.nome)), contrato && React.createElement(React.Fragment, null, " · ", React.createElement("button", {
+      className: "dl-link",
+      onClick: () => irPara("contrato", contrato.id)
+    }, contrato.cliente)))), React.createElement("div", {
+      className: "dl-row-v",
+      style: {
+        color: l.tipo === "e" ? "var(--terra)" : "var(--fase)"
+      }
+    }, l.tipo === "e" ? "+" : "−", brl(num(l.valor))), React.createElement("button", {
+      className: "dl-x",
+      onClick: () => up({
+        lancamentos: d.lancamentos.filter(y => y.id !== l.id)
+      })
+    }, "\xD7"));
+  }), React.createElement("div", {
     className: "dl-total"
   }, React.createElement("span", null, "Saldo"), React.createElement("b", null, brl(c.caixa))));
+})());
 }
 function CaixaReceber({
   d,
   up,
-  c
+  c,
+  irPara
 }) {
   const prev = d.lancamentos.filter(l => l.status === "previsto" && !l.medicaoId).sort((a, b) => (a.vencimento || "9999").localeCompare(b.vencimento || "9999"));
   const baixar = l => up({
@@ -2281,6 +2370,30 @@ function CaixaReceber({
       }, ...d.lancamentos]
     });
   };
+  const fonte = l => {
+    if (l.obraId) {
+      const o = d.obras.find(x => x.id === l.obraId);
+      return o && React.createElement("button", {
+        className: "dl-link",
+        onClick: () => irPara("obra", o.id)
+      }, o.nome || o.cliente);
+    }
+    if (l.ativoId) {
+      const a = d.ativos.find(x => x.id === l.ativoId);
+      return a && React.createElement("button", {
+        className: "dl-link",
+        onClick: () => irPara("ativo", a.id)
+      }, a.nome);
+    }
+    if (l.contratoId) {
+      const ct = d.contratos.find(x => x.id === l.contratoId);
+      return ct && React.createElement("button", {
+        className: "dl-link",
+        onClick: () => irPara("contrato", ct.id)
+      }, ct.cliente);
+    }
+    return null;
+  };
   return React.createElement(React.Fragment, null, React.createElement("div", {
     className: "dl-grid",
     style: {
@@ -2324,7 +2437,7 @@ function CaixaReceber({
     className: "dl-alert"
   }, React.createElement("h3", null, "Cobrar hoje"), c.atrasados.map(l => React.createElement("p", {
     key: l.id
-  }, l.desc, " \xB7 ", brl(num(l.valor)), " \xB7 venceu ", br(l.vencimento), " (", dias(l.vencimento, hoje()), " dias)"))), React.createElement("h3", {
+  }, l.desc, " \xB7 ", brl(num(l.valor)), " \xB7 venceu ", br(l.vencimento), " (", dias(l.vencimento, hoje()), " dias)", fonte(l) && React.createElement(React.Fragment, null, " \xB7 ", fonte(l))))), React.createElement("h3", {
     style: {
       marginBottom: 8
     }
@@ -2333,6 +2446,7 @@ function CaixaReceber({
   }, "Nada previsto. Lance na aba Conta escolhendo \"ainda vai cair\"."), prev.map(l => {
     const atras = l.vencimento && l.vencimento < hoje();
     const faltam = l.vencimento ? dias(hoje(), l.vencimento) : null;
+    const f = fonte(l);
     return React.createElement("div", {
       className: "dl-row",
       key: l.id
@@ -2342,7 +2456,7 @@ function CaixaReceber({
       className: "dl-row-t"
     }, l.desc || l.categoria), React.createElement("div", {
       className: "dl-row-s"
-    }, l.tipo === "e" ? "receber" : "pagar", " \xB7 ", l.vencimento ? br(l.vencimento) : "sem data", faltam !== null && (atras ? " · vencido há " + Math.abs(faltam) + " dias" : " · em " + faltam + " dias"))), React.createElement("div", {
+    }, l.tipo === "e" ? "receber" : "pagar", " \xB7 ", l.vencimento ? br(l.vencimento) : "sem data", faltam !== null && (atras ? " · vencido há " + Math.abs(faltam) + " dias" : " · em " + faltam + " dias"), f && React.createElement(React.Fragment, null, " \xB7 ", f))), React.createElement("div", {
       className: "dl-row-v",
       style: {
         color: atras ? "var(--fase)" : l.tipo === "e" ? "var(--terra)" : "var(--carbon)"
@@ -2374,7 +2488,10 @@ function CaixaReceber({
     className: "dl-row-main"
   }, React.createElement("div", {
     className: "dl-row-t"
-  }, obra.nome || obra.cliente), React.createElement("div", {
+  }, React.createElement("button", {
+    className: "dl-link",
+    onClick: () => irPara("obra", obra.id)
+  }, obra.nome || obra.cliente)), React.createElement("div", {
     className: "dl-row-s"
   }, m.descricao || "medição", " \xB7 ", m.vencimento ? "previsão " + br(m.vencimento) : "sem data prevista")), React.createElement("div", {
     className: "dl-row-v",
@@ -2930,10 +3047,11 @@ function AtivoDetalhe({
   upItem,
   c,
   id,
+  subInicial,
   voltar
 }) {
   const a = d.ativos.find(x => x.id === id);
-  const [sub, setSub] = useState("resumo");
+  const [sub, setSub] = useState(subInicial || "resumo");
   const [ap, setAp] = useState({
     data: hoje(),
     desc: "",
