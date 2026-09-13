@@ -83,6 +83,8 @@ Fases, em ordem, cada uma liberada só quando a anterior fecha:
 
 Duas dessas condições o painel agora **apura sozinho a partir dos lançamentos** (setembro/2026), sem guardar nada derivado: o ciclo de caixa (média de dias entre o primeiro gasto e o último recebimento de cada obra) e a sequência de meses fechados com lucro. A condição fecha se o número apurado bastar **ou** se ele marcar na mão — a marcação manual continua valendo como alternativa, porque ele pode ter histórico anterior ao uso do painel. Se mudar a apuração, mantenha as duas saídas.
 
+**Preço mínimo de obra** (`PrecoMinimo`, sub-aba "Quanto cobrar" em Obras, setembro/2026). Custo da obra = custo direto informado + variáveis `unidade: "obra"` + fatia do custo fixo. A fatia usa **só o custo fixo ainda não coberto pelo recorrente** (`custoFixo - recorrente`), rateado por `meses ÷ obras simultâneas` — é a ligação direta com a Fase 1: quanto mais contrato recorrente, menos a obra precisa carregar e mais competitivo ele fica. O preço sai pelo **método do divisor**, `custo ÷ (1 − (percentuais + margem)/100)`, porque imposto e comissão incidem sobre o contrato, não sobre o custo. **Nunca troque por soma de margem por cima do custo** — dá margem real menor que a pretendida, que é justamente o erro que a tela existe para evitar. Guarde o caso `divisor <= 0` (percentuais + margem ≥ 100%).
+
 Divisão do lucro em três potes, nesta prioridade: reserva até 6 meses de custo fixo, capital de giro, fundo de ativos. **Enquanto a reserva não enche, o fundo de ativos recebe zero** e a parte dele é desviada para a reserva.
 
 Travas que aparecem em vermelho no Painel: mais de um ativo em execução; dinheiro no fundo de ativos com reserva abaixo de 6 meses; folha no custo fixo sem o recorrente cobrir 100%; cobranças vencidas.
@@ -101,7 +103,7 @@ Feito para tela de celular estreita, cerca de 380px. Teste mentalmente nessa lar
 
 ## Estado atual
 
-Funciona: custos fixos e variáveis com sugestões, contratos com agenda de visitas, obras com medições, gastos, etapas e equipe, caixa com contas a receber e a pagar, fechamento mensal em três toques, fluxo de caixa projetado, resultado mês a mês apurado dos lançamentos, metas editáveis com submetas, ativos com aportes e payback real, vida, clientes, backup.
+Funciona: custos fixos e variáveis com sugestões, contratos com agenda de visitas, obras com medições, gastos, etapas e equipe, caixa com contas a receber e a pagar, fechamento mensal em três toques, fluxo de caixa projetado, resultado mês a mês apurado dos lançamentos, calculadora de preço mínimo de obra, metas editáveis com submetas, ativos com aportes e payback real, vida, clientes, backup.
 
 Quase todo número do Painel é clicável e leva à aba/tela onde ele é lançado (setembro/2026): rótulos dos medidores, os oito cartões, o "resolver →" das travas e os nomes de obra/ativo/contrato nas linhas do Caixa. Ao adicionar número novo, ligue-o à fonte também — `irAba(aba, sub)` e `irPara(tipo, id, sub)` já aceitam a sub-aba de destino.
 
@@ -112,7 +114,7 @@ Quase todo número do Painel é clicável e leva à aba/tela onde ele é lançad
 3. ~~Pré-compilar o JSX~~ — feito, ver nota acima sobre `build.js`
 4. ~~Gerar ícone PNG 192 e 512~~ — feito (`icone-192.png`, `icone-512.png`, gerados do `icone.svg` via Chrome headless), incluídos no manifest e no `<head>`
 5. Backup automático periódico, já que hoje depende de ele lembrar
-6. **Custos variáveis com `unidade: "obra"` e `"percentual"` são cadastrados mas nunca usados em cálculo** — só `"mes"` entra (em `varMensal`). Ele digita e o painel ignora. O uso natural seria uma calculadora de preço mínimo de obra (custo direto + variáveis por obra + percentuais + fatia do custo fixo + margem desejada), que trava orçamento abaixo do piso. Ideia oferecida a ele em setembro/2026; ele preferiu priorizar o histórico mensal primeiro.
+6. ~~Custos variáveis `"obra"`/`"percentual"` cadastrados e nunca usados~~ — feito: alimentam a calculadora de preço mínimo (ver abaixo)
 7. Avisar cobrança **antes** de vencer (hoje a trava só dispara depois de vencida)
 
 ## Como trabalhar com ele

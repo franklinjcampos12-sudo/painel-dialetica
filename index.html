@@ -135,6 +135,11 @@ const CSS = `
 .dl-chk { display:flex; gap:9px; align-items:flex-start; background:var(--paper); border:1px solid var(--line);
   border-radius:2px; padding:10px 12px; margin-bottom:7px; font-size:14px; }
 .dl-chk input { margin-top:4px; flex:0 0 auto; width:17px; height:17px; accent-color:var(--terra); }
+.dl-calc { background:var(--paper); border:1px solid var(--line); border-radius:2px; padding:4px 12px; margin-bottom:10px; }
+.dl-calc-l { display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:7px 0; font-size:14px; }
+.dl-calc-l + .dl-calc-l { border-top:1px solid var(--line); }
+.dl-calc-l > span:first-child { color:var(--muted); min-width:0; }
+.dl-calc-l b { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-size:18px; font-variant-numeric:tabular-nums; flex:0 0 auto; }
 .dl-total { display:flex; justify-content:space-between; align-items:baseline; border-top:2px solid var(--carbon); padding-top:8px; margin-top:4px; }
 .dl-total b { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-size:23px; font-variant-numeric:tabular-nums; }
 .dl-pill { display:inline-block; font-size:12px; padding:2px 7px; border-radius:2px; border:1px solid var(--line); color:var(--muted); white-space:nowrap; }
@@ -661,7 +666,8 @@ function PainelDialetica() {
     d: d,
     up: up,
     c: c,
-    abrir: id => irPara("obra", id)
+    abrir: id => irPara("obra", id),
+    irAba: irAba
   });else if (aba === "caixa") conteudo = React.createElement(Caixa, {
     d: d,
     up: up,
@@ -1401,12 +1407,218 @@ function ContratoDetalhe({
     }, "\xD7")));
   }));
 }
+function PrecoMinimo({
+  d,
+  c,
+  irAba
+}) {
+  const [q, setQ] = useState({
+    direto: "",
+    meses: "1",
+    simultaneas: "2",
+    margem: "20",
+    preco: ""
+  });
+  const set = (k, v) => setQ({
+    ...q,
+    [k]: v
+  });
+  const varObra = d.custos.filter(x => x.tipo === "variavel" && x.unidade === "obra" && num(x.valor) > 0);
+  const varPct = d.custos.filter(x => x.tipo === "variavel" && x.unidade === "percentual" && num(x.valor) > 0);
+  const somaObra = varObra.reduce((s, x) => s + num(x.valor), 0);
+  const pctTotal = varPct.reduce((s, x) => s + num(x.valor), 0);
+  const direto = num(q.direto);
+  const meses = Math.max(0, num(q.meses));
+  const simultaneas = Math.max(1, num(q.simultaneas));
+  const margemPct = num(q.margem);
+  const fixoDescoberto = Math.max(0, c.custoFixo - c.recorrente);
+  const fatiaFixo = fixoDescoberto * meses / simultaneas;
+  const custoTotal = direto + somaObra + fatiaFixo;
+  const divisor = 1 - (pctTotal + margemPct) / 100;
+  const impossivel = divisor <= 0;
+  const precoMinimo = impossivel ? 0 : custoTotal / divisor;
+  const preco = num(q.preco);
+  const custoPct = preco * pctTotal / 100;
+  const lucroReal = preco - custoTotal - custoPct;
+  const margemReal = preco > 0 ? lucroReal / preco * 100 : 0;
+  const abaixo = preco > 0 && preco < precoMinimo;
+  const semVariaveis = varObra.length === 0 && varPct.length === 0;
+  return React.createElement(React.Fragment, null, React.createElement("p", {
+    className: "dl-note"
+  }, "Antes de mandar o or\xE7amento: quanto essa obra precisa custar para pagar o material, a m\xE3o de obra, a parte do custo fixo que ela tem que carregar, os impostos e ainda sobrar a margem que voc\xEA quer."), semVariaveis && React.createElement("div", {
+    className: "dl-info"
+  }, React.createElement("h3", null, "Faltam seus custos vari\xE1veis"), React.createElement("p", null, "A conta fica mais certa se voc\xEA cadastrar os custos que existem em toda obra (frete, ART, comiss\xE3o, ISS).", " ", React.createElement("button", {
+    className: "dl-link",
+    onClick: () => irAba("custos")
+  }, "Cadastrar em Custos \u2192"))), React.createElement("div", {
+    className: "dl-form"
+  }, React.createElement("div", {
+    className: "dl-f",
+    style: {
+      alignItems: "center"
+    }
+  }, React.createElement("span", {
+    className: "dl-stat-label",
+    style: {
+      flex: 1
+    }
+  }, "material + m\xE3o de obra"), React.createElement("input", {
+    className: "dl-in",
+    style: {
+      maxWidth: 130,
+      textAlign: "right"
+    },
+    inputMode: "decimal",
+    placeholder: "R$",
+    value: q.direto,
+    onChange: e => set("direto", e.target.value)
+  })), React.createElement("div", {
+    className: "dl-f",
+    style: {
+      alignItems: "center"
+    }
+  }, React.createElement("span", {
+    className: "dl-stat-label",
+    style: {
+      flex: 1
+    }
+  }, "a obra dura, em meses"), React.createElement("input", {
+    className: "dl-in",
+    style: {
+      maxWidth: 90,
+      textAlign: "right"
+    },
+    inputMode: "decimal",
+    value: q.meses,
+    onChange: e => set("meses", e.target.value)
+  })), React.createElement("div", {
+    className: "dl-f",
+    style: {
+      alignItems: "center"
+    }
+  }, React.createElement("span", {
+    className: "dl-stat-label",
+    style: {
+      flex: 1
+    }
+  }, "obras que toco ao mesmo tempo"), React.createElement("input", {
+    className: "dl-in",
+    style: {
+      maxWidth: 90,
+      textAlign: "right"
+    },
+    inputMode: "decimal",
+    value: q.simultaneas,
+    onChange: e => set("simultaneas", e.target.value)
+  })), React.createElement("div", {
+    className: "dl-f",
+    style: {
+      marginBottom: 0,
+      alignItems: "center"
+    }
+  }, React.createElement("span", {
+    className: "dl-stat-label",
+    style: {
+      flex: 1
+    }
+  }, "margem que quero, em %"), React.createElement("input", {
+    className: "dl-in",
+    style: {
+      maxWidth: 90,
+      textAlign: "right"
+    },
+    inputMode: "decimal",
+    value: q.margem,
+    onChange: e => set("margem", e.target.value)
+  }))), impossivel ? React.createElement("div", {
+    className: "dl-alert"
+  }, React.createElement("h3", null, "Essa conta n\xE3o fecha"), React.createElement("p", null, "Impostos e comiss\xF5es (", pctTotal.toFixed(1).replace(".", ","), "%) mais a margem que voc\xEA quer (", margemPct.toFixed(1).replace(".", ","), "%) somam ", (pctTotal + margemPct).toFixed(1).replace(".", ","), "% do contrato. N\xE3o existe pre\xE7o que feche isso. Baixe a margem ou revise os percentuais em Custos.")) : React.createElement(React.Fragment, null, React.createElement("div", {
+    className: "dl-calc"
+  }, React.createElement("div", {
+    className: "dl-calc-l"
+  }, React.createElement("span", null, "Material e m\xE3o de obra"), React.createElement("b", null, brl(direto))), React.createElement("div", {
+    className: "dl-calc-l"
+  }, React.createElement("span", null, "Vari\xE1veis por obra", varObra.length > 0 && React.createElement("span", {
+    style: {
+      display: "block",
+      fontSize: 12.5
+    }
+  }, varObra.map(x => x.nome).join(", "))), React.createElement("b", null, brl(somaObra))), React.createElement("div", {
+    className: "dl-calc-l"
+  }, React.createElement("span", null, "Custo fixo que esta obra carrega", React.createElement("span", {
+    style: {
+      display: "block",
+      fontSize: 12.5
+    }
+  }, fixoDescoberto > 0 ? brl(fixoDescoberto) + "/mês ainda descoberto × " + meses + (meses === 1 ? " mês ÷ " : " meses ÷ ") + simultaneas + (simultaneas === 1 ? " obra" : " obras") : c.custoFixo > 0 ? "seu recorrente já cobre o custo fixo inteiro, a obra não precisa carregar nada" : "cadastre o custo fixo em Custos para esta linha valer")), React.createElement("b", null, brl(fatiaFixo))), React.createElement("div", {
+    className: "dl-calc-l"
+  }, React.createElement("span", null, "Custo total da obra"), React.createElement("b", null, brl(custoTotal))), React.createElement("div", {
+    className: "dl-calc-l"
+  }, React.createElement("span", null, "Impostos e comiss\xF5es", varPct.length > 0 && React.createElement("span", {
+    style: {
+      display: "block",
+      fontSize: 12.5
+    }
+  }, varPct.map(x => x.nome + " " + num(x.valor) + "%").join(", "))), React.createElement("b", null, pctTotal.toFixed(1).replace(".", ","), "%")), React.createElement("div", {
+    className: "dl-calc-l"
+  }, React.createElement("span", null, "Margem que voc\xEA quer"), React.createElement("b", null, margemPct.toFixed(1).replace(".", ","), "%"))), React.createElement("div", {
+    className: "dl-meter"
+  }, React.createElement("div", {
+    className: "dl-meter-top"
+  }, React.createElement("div", null, React.createElement("p", {
+    className: "dl-stat-label"
+  }, "Cobre no m\xEDnimo"), React.createElement("div", {
+    className: "dl-big",
+    style: {
+      color: "var(--carbon)"
+    }
+  }, brl(precoMinimo)))), React.createElement("div", {
+    className: "dl-legend"
+  }, React.createElement("span", null, "custo ", brl(custoTotal)), React.createElement("span", null, "impostos ", brl(precoMinimo * pctTotal / 100), " \xB7 sobra ", brl(precoMinimo * margemPct / 100)))), React.createElement("p", {
+    className: "dl-note",
+    style: {
+      marginTop: 10
+    }
+  }, "Impostos e comiss\xE3o saem do valor do contrato, n\xE3o do custo. Por isso n\xE3o basta somar a margem por cima: o pre\xE7o acima j\xE1 \xE9 o que faz sobrar ", margemPct.toFixed(1).replace(".", ","), "% de verdade."), React.createElement("div", {
+    className: "dl-form"
+  }, React.createElement("div", {
+    className: "dl-f",
+    style: {
+      marginBottom: 0,
+      alignItems: "center"
+    }
+  }, React.createElement("span", {
+    className: "dl-stat-label",
+    style: {
+      flex: 1
+    }
+  }, "quanto pensei em cobrar"), React.createElement("input", {
+    className: "dl-in",
+    style: {
+      maxWidth: 130,
+      textAlign: "right"
+    },
+    inputMode: "decimal",
+    placeholder: "R$",
+    value: q.preco,
+    onChange: e => set("preco", e.target.value)
+  }))), preco > 0 && (abaixo ? React.createElement("div", {
+    className: "dl-alert"
+  }, React.createElement("h3", null, "Abaixo do piso"), React.createElement("p", null, "A ", brl(preco), " faltam ", brl(precoMinimo - preco), " para chegar no m\xEDnimo. Sua margem real cairia para", " ", margemReal.toFixed(1).replace(".", ","), "%", lucroReal < 0 ? ", ou seja, você pagaria " + brl(Math.abs(lucroReal)) + " para trabalhar." : ".")) : React.createElement("div", {
+    className: "dl-info",
+    style: {
+      borderLeftColor: "var(--terra)"
+    }
+  }, React.createElement("h3", null, "Pre\xE7o fecha"), React.createElement("p", null, "A ", brl(preco), " sobram ", brl(lucroReal), " depois de tudo, uma margem real de", " ", margemReal.toFixed(1).replace(".", ","), "%. Est\xE1 ", brl(preco - precoMinimo), " acima do m\xEDnimo.")))));
+}
 function Obras({
   d,
   up,
   c,
-  abrir
+  abrir,
+  irAba
 }) {
+  const [sub, setSub] = useState("lista");
   const [f, setF] = useState({
     cliente: "",
     nome: "",
@@ -1440,7 +1652,20 @@ function Obras({
   };
   return React.createElement("div", {
     className: "dl-sec"
-  }, React.createElement("h2", null, "Obras"), React.createElement("p", {
+  }, React.createElement("h2", null, "Obras"), React.createElement("div", {
+    className: "dl-sub2",
+    style: {
+      marginTop: 8
+    }
+  }, [["lista", "Minhas obras"], ["preco", "Quanto cobrar"]].map(([k, r]) => React.createElement("button", {
+    key: k,
+    className: sub === k ? "on" : "",
+    onClick: () => setSub(k)
+  }, r))), sub === "preco" ? React.createElement(PrecoMinimo, {
+    d: d,
+    c: c,
+    irAba: irAba
+  }) : React.createElement(React.Fragment, null, React.createElement("p", {
     className: "dl-note"
   }, "Cadastre a obra aqui e entre nela para lan\xE7ar medi\xE7\xE3o, gasto, etapa e equipe."), React.createElement("div", {
     className: "dl-form"
@@ -1579,7 +1804,7 @@ function Obras({
       className: "dl-x",
       onClick: () => abrir(o.id)
     }, "\u203A"));
-  }));
+  })));
 }
 function ObraDetalhe({
   d,
